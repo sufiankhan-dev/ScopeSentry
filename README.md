@@ -11,12 +11,13 @@ and no database.
 
 | Area | State |
 | --- | --- |
-| Input workspace (agreement + conversation, validation, sample data) | Working |
+| Input workspace (agreement + conversation, validation, sample data, privacy notice) | Working |
 | Ollama / Gemma analysis | Not wired up yet |
 | Scope report, evidence verification, reply drafting | Not built yet |
 
 The input screen is honest about this: pressing **Analyze scope** says the analysis engine
-is not connected yet instead of showing fake results. Findings are advisory review aids,
+is not connected yet instead of showing fake results. Each field shows a realistic sample
+placeholder and a labeled one-click sample loader. Findings are advisory review aids,
 never legal conclusions.
 
 ## Requirements
@@ -154,8 +155,8 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 
 ```text
 app/          route shell, layout, global tokens (Tailwind v4 + shadcn)
-components/   ui/ shadcn primitives, scope-form.tsx client form
-lib/          schemas.ts (Zod contracts), samples.ts (labeled demo input)
+components/   ui/ shadcn primitives, scope-form.tsx client form, privacy-indicator.tsx
+lib/          schemas.ts (Zod contracts), samples.ts (labeled demo input + placeholders)
 prompts/      one task prompt per implementation step, per AGENTS.md
 ```
 
