@@ -12,6 +12,7 @@ and no database.
 | Area | State |
 | --- | --- |
 | Input workspace (agreement + conversation, validation, sample data, privacy notice) | Working |
+| Report contracts and types (Zod schemas for agreement, conversation, findings, summary) | Working |
 | Ollama / Gemma analysis | Not wired up yet |
 | Scope report, evidence verification, reply drafting | Not built yet |
 
@@ -158,6 +159,7 @@ app/          route shell, layout, global tokens (Tailwind v4 + shadcn)
 components/   ui/ shadcn primitives, scope-form.tsx client form, privacy-indicator.tsx
 lib/          schemas.ts (Zod contracts), samples.ts (labeled demo input + placeholders)
 prompts/      one task prompt per implementation step, per AGENTS.md
+tests/        node:test unit tests (no test framework dependency)
 ```
 
 ## Scripts
@@ -168,6 +170,7 @@ npm run build   # production build
 npm run start   # serve the production build
 npm run lint    # eslint
 npm run typecheck # tsc --noEmit
+npm test        # node:test (schema contracts)
 ```
 
 ## Troubleshooting
