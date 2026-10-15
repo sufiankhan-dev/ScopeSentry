@@ -1,5 +1,17 @@
 export const SAMPLE_LABEL = "Sample input";
 
+export const PLACEHOLDER_AGREEMENT = `Independent Design Services Agreement — Riverside Coffee Roasters
+
+Scope: brand identity refresh and website design for six page templates.
+Included: two (2) rounds of revisions per template, one consolidated list per round.
+Not included: copywriting, photography, front-end development, CMS setup.`;
+
+export const PLACEHOLDER_CONVERSATION = `Priya (client) — Mon 09:14
+"We need an online ordering page. Can you build that?"
+
+Me — Mon 09:40
+"Ordering means payments and a CMS connection, which our agreement lists as not included."`;
+
 export const SAMPLE_AGREEMENT = `Independent Design Services Agreement — Riverside Coffee Roasters
 
 Project: Brand identity refresh and small-business website.
