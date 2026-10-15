@@ -166,7 +166,7 @@ npm run dev     # dev server
 npm run build   # production build
 npm run start   # serve the production build
 npm run lint    # eslint
-npx tsc --noEmit # type check
+npm run typecheck # tsc --noEmit
 ```
 
 ## Troubleshooting
