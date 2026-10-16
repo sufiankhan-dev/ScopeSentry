@@ -13,8 +13,9 @@ and no database.
 | --- | --- |
 | Input workspace (agreement + conversation, validation, sample data, privacy notice) | Working |
 | Report contracts and types (Zod schemas for agreement, conversation, findings, summary) | Working |
-| Ollama / Gemma analysis | Not wired up yet |
-| Scope report, evidence verification, reply drafting | Not built yet |
+| Ollama / Gemma client (`lib/ollama.ts`: config, timeouts, validated JSON, typed errors) | Working |
+| Analysis pipeline (prompts, extraction, comparison, evidence verification) | Not built yet |
+| Scope report UI, reply drafting, API routes | Not built yet |
 
 The input screen is honest about this: pressing **Analyze scope** says the analysis engine
 is not connected yet instead of showing fake results. Each field shows a realistic sample
@@ -77,10 +78,11 @@ Copy-Item .env.example .env.local
 ```dotenv
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=gemma3:4b
+# optional: OLLAMA_TIMEOUT_MS=120000, OLLAMA_KEEP_ALIVE=10m
 ```
 
 `.env.local` is gitignored. Both variables are read server-side only; never prefix them
-with `NEXT_PUBLIC_`.
+with `NEXT_PUBLIC_`. See `.env.example` for every supported value.
 
 ### 4. Run
 
@@ -117,6 +119,54 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:11434/api/chat -Body $body 
 
 Expect a JSON object on stdout. If this fails, the model or the server is the problem —
 not the app.
+
+## Ollama client
+
+`lib/ollama.ts` is the only module that talks to a model. Route handlers will call it like
+this once the analysis pipeline lands:
+
+```ts
+const { data, meta } = await chatJson({
+  messages,
+  schema: agreementExtractionSchema, // the caller's Zod contract
+  format: z.toJSONSchema(agreementExtractionSchema), // constrains generation
+  options: { num_ctx: 8192 },
+});
+```
+
+Behaviour worth knowing:
+
+- **One request, one destination.** Only `POST /api/chat` and `GET /api/tags` are ever
+  called, always against `OLLAMA_BASE_URL`. No cloud provider, no API key, no
+  `Authorization` header, no redirects.
+- **Local by default.** The base URL must be a loopback host. Anything else is refused with
+  `config_invalid` unless `OLLAMA_ALLOW_NON_LOOPBACK=1` is set deliberately.
+- **Never downloads.** There is no `/api/pull` path. A missing model returns `model_missing`
+  and names the exact `ollama pull <tag>` command.
+- **Always bounded.** Every request is aborted after `OLLAMA_TIMEOUT_MS` (default 120000,
+  range 1000–600000); the abort covers reading the response body, not just the handshake.
+- **Always validated.** The Ollama envelope is parsed, then `message.content` is parsed as
+  JSON and validated by the caller's schema. Anything unexpected becomes
+  `malformed_output` and shows no findings.
+- **Silent.** No logging, no files, no cross-request cache. Error `message`s are static and
+  contain no prompt, no pasted text, no model output, and no endpoint; Ollama's own error
+  text is attached as `cause` for the Next.js server console only.
+
+Errors are one `OllamaError` with a `code`, a `retryable` flag, and an `httpStatus` a route
+can return as-is:
+
+| Code | HTTP | Retryable | Meaning |
+| --- | --- | --- | --- |
+| `config_invalid` | 500 | no | `OLLAMA_*` values are unusable |
+| `unavailable` | 503 | yes | Ollama is not answering on the local address |
+| `model_missing` | 503 | no | The configured tag is not installed |
+| `timeout` | 504 | yes | The model took longer than the limit |
+| `bad_request` | 502 | no | Ollama rejected the request (HTTP 400) |
+| `server_error` | 502 | yes | Ollama failed while generating (HTTP 429/5xx) |
+| `malformed_output` | 502 | no | Output did not match the expected contract |
+
+`getOllamaStatus()` is the cheap precheck a route can use for the "Ollama unavailable or
+model missing" state: it reads `/api/tags`, never throws, and does not return the endpoint.
 
 ## Tuning for a CPU-only laptop
 
@@ -157,7 +207,7 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 ```text
 app/          route shell, layout, global tokens (Tailwind v4 + shadcn)
 components/   ui/ shadcn primitives, scope-form.tsx client form, privacy-indicator.tsx
-lib/          schemas.ts (Zod contracts), samples.ts (labeled demo input + placeholders)
+lib/          schemas.ts (Zod contracts), ollama.ts (server-only Ollama client), samples.ts
 prompts/      one task prompt per implementation step, per AGENTS.md
 tests/        node:test unit tests (no test framework dependency)
 ```
@@ -170,7 +220,7 @@ npm run build   # production build
 npm run start   # serve the production build
 npm run lint    # eslint
 npm run typecheck # tsc --noEmit
-npm test        # node:test (schema contracts)
+npm test        # node:test (schema contracts + Ollama client)
 ```
 
 ## Troubleshooting
@@ -180,6 +230,8 @@ npm test        # node:test (schema contracts)
 | `ollama` not recognised in the terminal | PATH not refreshed | Open a new terminal, or reinstall; binaries live in `%LOCALAPPDATA%\Programs\Ollama` |
 | Connection refused on `127.0.0.1:11434` | Ollama not running | Start it from the Start menu, or `ollama serve` |
 | `model not found` in the API response | Tag mismatch | `ollama list` and set the exact tag in `OLLAMA_MODEL` |
+| `config_invalid` about a local server | `OLLAMA_BASE_URL` is not loopback | Use `127.0.0.1`/`localhost`, or set `OLLAMA_ALLOW_NON_LOOPBACK=1` deliberately |
+| `timeout` after a long wait | CPU inference slower than `OLLAMA_TIMEOUT_MS` | Raise it (max 600000), or use a smaller tag such as `gemma3:1b` |
 | Very slow responses | CPU inference, large `num_ctx` | Drop to `gemma3:1b` for iteration, lower `num_ctx`, trim pasted text |
 | Out of disk space | Models in `C:\Users\<you>\.ollama` | Set `OLLAMA_MODELS` to a larger drive, then restart Ollama |
 
