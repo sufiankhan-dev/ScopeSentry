@@ -252,3 +252,98 @@ export type ScopeReport = z.infer<typeof scopeReportSchema>;
 
 export const ADVISORY_NOTICE =
   "Advisory only. ScopeSentry compares a client conversation against your agreement using a local model. It is not legal advice, not a legal determination, and not a statement that a contract has been breached.";
+
+// ---------------------------------------------------------------------------
+// Analyze API contracts
+//
+// One contract, two readers: the route handler builds a body that must satisfy
+// these, and the browser parses the same schemas before it renders anything.
+// That is what keeps an unvalidated finding out of the UI even if the handler
+// and the client ever drift apart.
+//
+// `ANALYZE_ERROR_CODES` mirrors `OLLAMA_ERROR_CODES` from `lib/ollama.ts` and
+// adds the two failures decided before a model is involved. It is written out
+// here rather than spread from that module on purpose: `lib/schemas.ts` is
+// imported by client components, and `lib/ollama.ts` is server-only code that
+// reads `process.env` and calls `fetch`. Importing it would drag the Ollama
+// client into the browser bundle. `tests/schemas.test.ts` asserts the two lists
+// stay in step, so the duplication cannot drift.
+// ---------------------------------------------------------------------------
+
+export const ANALYZE_ERROR_CODES = [
+  "invalid_request",
+  "invalid_input",
+  "config_invalid",
+  "unavailable",
+  "model_missing",
+  "timeout",
+  "bad_request",
+  "server_error",
+  "malformed_output",
+] as const;
+
+export type AnalyzeErrorCode = (typeof ANALYZE_ERROR_CODES)[number];
+
+/** A rejected field. Carries a path and a static message, never the field's value. */
+export const analyzeInputIssueSchema = z.strictObject({
+  path: z.string().max(200),
+  message: z.string().max(500),
+});
+
+export type AnalyzeInputIssue = z.infer<typeof analyzeInputIssueSchema>;
+
+export const analyzeErrorSchema = z.strictObject({
+  error: z.strictObject({
+    code: z.enum(ANALYZE_ERROR_CODES),
+    /** Already user-safe and static: it never contains pasted text, a prompt, or an endpoint. */
+    message: z.string().trim().min(1).max(1_000),
+    retryable: z.boolean(),
+    issues: z.array(analyzeInputIssueSchema).max(20).optional(),
+  }),
+});
+
+export type AnalyzeError = z.infer<typeof analyzeErrorSchema>;
+
+/**
+ * What the report was produced with, minus the endpoint.
+ *
+ * `model` is the configured local tag and `durationMs` is server wall-clock time.
+ * Neither is a secret and both make the "it ran locally, and it was slow" claim
+ * checkable instead of asserted. The Ollama base URL is deliberately absent: it
+ * must never reach the browser.
+ */
+export const analyzeMetaSchema = z.strictObject({
+  model: z.string().trim().min(1).max(200),
+  durationMs: z.number().int().nonnegative(),
+});
+
+export type AnalyzeMeta = z.infer<typeof analyzeMetaSchema>;
+
+export const analyzeResponseSchema = z.strictObject({
+  report: scopeReportSchema,
+  meta: analyzeMetaSchema,
+});
+
+export type AnalyzeResponse = z.infer<typeof analyzeResponseSchema>;
+
+/**
+ * A failure the browser can render, either parsed from `analyzeErrorSchema` or
+ * produced locally when the request never produced a usable response.
+ */
+export type AnalyzeFailure = {
+  code: AnalyzeErrorCode | "network_error" | "invalid_response";
+  message: string;
+  retryable: boolean;
+  issues: AnalyzeInputIssue[];
+};
+
+/**
+ * The client's request state as one closed union, so "loading" and "has a
+ * report" cannot both be true and no branch has to defend against a state it
+ * was not written for.
+ */
+export type AnalysisState =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "succeeded"; report: ScopeReport; meta: AnalyzeMeta }
+  | { status: "failed"; error: AnalyzeFailure };

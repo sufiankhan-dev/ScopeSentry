@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-
+import { AnalysisPanel } from "@/components/analysis-panel";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -22,11 +21,29 @@ import {
 import {
   MAX_TEXT_LENGTH,
   agreementTextSchema,
+  analyzeErrorSchema,
   analyzeInputSchema,
+  analyzeResponseSchema,
   conversationTextSchema,
 } from "@/lib/schemas";
+import type { AnalysisState, AnalyzeFailure, AnalyzeResponse } from "@/lib/schemas";
+import { useState } from "react";
 
 const LIMIT = MAX_TEXT_LENGTH.toLocaleString("en-US");
+
+const ANALYZE_ENDPOINT = "/api/analyze";
+
+/** Shown when the browser cannot reach ScopeSentry's own endpoint at all. */
+const NETWORK_ERROR_MESSAGE =
+  "ScopeSentry could not reach its analysis endpoint. Check that the app is still running, then try again. Your text is still in the fields above.";
+
+/**
+ * Shown when the endpoint answered with something that is not a report and not an
+ * error envelope. Deliberately vague: an unexpected body is a bug or a proxy, and
+ * quoting it could leak whatever a misconfigured proxy injected.
+ */
+const INVALID_RESPONSE_MESSAGE =
+  "ScopeSentry received a response it could not read, so no findings were shown. Nothing was sent anywhere else. Try again.";
 
 type TextFieldName = "agreement" | "conversation";
 
@@ -36,6 +53,60 @@ function count(value: string) {
   return value.length.toLocaleString("en-US");
 }
 
+type AnalyzeOutcome =
+  | { ok: true; response: AnalyzeResponse }
+  | { ok: false; failure: AnalyzeFailure };
+
+function invalidResponse(): AnalyzeOutcome {
+  return {
+    ok: false,
+    failure: {
+      code: "invalid_response",
+      message: INVALID_RESPONSE_MESSAGE,
+      retryable: true,
+      issues: [],
+    },
+  };
+}
+
+/**
+ * Turns whatever came back from `POST /api/analyze` into a validated outcome.
+ *
+ * The body is parsed against the shared contracts *before* anything is read out
+ * of it, so the UI never indexes into an unverified object. A 200 whose body
+ * fails `analyzeResponseSchema` is treated as an invalid response rather than
+ * partially rendered, because a report is only trustworthy once it has been
+ * through the same schema the server used.
+ */
+async function readAnalyzeResponse(response: Response): Promise<AnalyzeOutcome> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return invalidResponse();
+  }
+
+  if (!response.ok) {
+    const parsed = analyzeErrorSchema.safeParse(body);
+    if (!parsed.success) return invalidResponse();
+
+    return {
+      ok: false,
+      failure: {
+        code: parsed.data.error.code,
+        message: parsed.data.error.message,
+        retryable: parsed.data.error.retryable,
+        issues: parsed.data.error.issues ?? [],
+      },
+    };
+  }
+
+  const parsed = analyzeResponseSchema.safeParse(body);
+  if (!parsed.success) return invalidResponse();
+
+  return { ok: true, response: parsed.data };
+}
+
 export function ScopeForm() {
   const [agreement, setAgreement] = useState("");
   const [conversation, setConversation] = useState("");
@@ -43,7 +114,7 @@ export function ScopeForm() {
     agreement: false,
     conversation: false,
   });
-  const [submitted, setSubmitted] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisState>({ status: "idle" });
 
   const agreementResult = agreementTextSchema.safeParse(agreement);
   const conversationResult = conversationTextSchema.safeParse(conversation);
@@ -68,16 +139,24 @@ export function ScopeForm() {
     } else {
       setConversation(SAMPLE_CONVERSATION);
     }
-    setSubmitted(false);
+    setAnalysis({ status: "idle" });
   }
 
   function loadSampleBoth() {
     setAgreement(SAMPLE_AGREEMENT);
     setConversation(SAMPLE_CONVERSATION);
-    setSubmitted(false);
+    setAnalysis({ status: "idle" });
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  /**
+   * Runs one analysis.
+   *
+   * Started from the submit handler rather than an effect, so it runs exactly
+   * once per submission. The text state is deliberately left untouched, which is
+   * what keeps the user's documents available to correct and retry after a
+   * failure — nothing here clears or refetches a field.
+   */
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const result = analyzeInputSchema.safeParse({ agreement, conversation });
@@ -87,7 +166,32 @@ export function ScopeForm() {
       return;
     }
 
-    setSubmitted(true);
+    setAnalysis({ status: "running" });
+
+    try {
+      const response = await fetch(ANALYZE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(result.data),
+      });
+
+      const outcome = await readAnalyzeResponse(response);
+      setAnalysis(
+        outcome.ok
+          ? { status: "succeeded", report: outcome.response.report, meta: outcome.response.meta }
+          : { status: "failed", error: outcome.failure },
+      );
+    } catch {
+      setAnalysis({
+        status: "failed",
+        error: {
+          code: "network_error",
+          message: NETWORK_ERROR_MESSAGE,
+          retryable: true,
+          issues: [],
+        },
+      });
+    }
   }
 
   return (
@@ -217,8 +321,8 @@ export function ScopeForm() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" size="lg" disabled={!isValid}>
-            Analyze scope
+          <Button type="submit" size="lg" disabled={!isValid || analysis.status === "running"}>
+            {analysis.status === "running" ? "Analyzing…" : "Analyze scope"}
           </Button>
           <Button
             type="button"
@@ -236,20 +340,7 @@ export function ScopeForm() {
         ) : null}
       </div>
 
-      {submitted ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-xl border border-border bg-muted/60 px-4 py-4 sm:px-5"
-        >
-          <p className="text-sm font-medium">Analysis engine not connected yet</p>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Your text stayed in this browser tab and nothing was sent anywhere. The next
-            build runs the same check against a model on your own machine through Ollama and
-            returns a scope report with the source text behind every finding.
-          </p>
-        </div>
-      ) : null}
+      <AnalysisPanel state={analysis} />
     </form>
   );
 }

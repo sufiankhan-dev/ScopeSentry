@@ -14,13 +14,20 @@ and no database.
 | Input workspace (agreement + conversation, validation, sample data, privacy notice) | Working |
 | Report contracts and types (Zod schemas for agreement, conversation, findings, summary) | Working |
 | Ollama / Gemma client (`lib/ollama.ts`: config, timeouts, validated JSON, typed errors) | Working |
-| Analysis pipeline (prompts, extraction, comparison, evidence verification) | Working (server-side only; no route or UI yet) |
-| Scope report UI, reply drafting, API routes | Not built yet |
+| Analysis pipeline (prompts, extraction, comparison, evidence verification) | Working |
+| Analysis API (`POST /api/analyze`, validated request/response, redacted errors) | Working |
+| Scope report UI (summary, per-request findings, status labels, evidence, reasoning, next steps) | Working |
+| Reply drafting (`/api/reply`, editable client message) | Not built yet |
 
-The input screen is honest about this: pressing **Analyze scope** says the analysis engine
-is not connected yet instead of showing fake results. Each field shows a realistic sample
-placeholder and a labeled one-click sample loader. Findings are advisory review aids,
-never legal conclusions.
+Pressing **Analyze scope** runs a real analysis against your local Ollama server and
+renders the report. Every finding shows the classification, the source quotes behind
+it, the reasoning, and a next step. Findings are advisory review aids, never legal
+conclusions.
+
+Expect a slow first run: `gemma3:4b` on a CPU-only machine takes roughly eight minutes
+end to end, because the pipeline makes three sequential model calls. See
+["Tuning for a CPU-only laptop"](#tuning-for-a-cpu-only-laptop) — in particular you
+probably need `OLLAMA_TIMEOUT_MS=600000`.
 
 ## Requirements
 
@@ -168,6 +175,52 @@ can return as-is:
 `getOllamaStatus()` is the cheap precheck a route can use for the "Ollama unavailable or
 model missing" state: it reads `/api/tags`, never throws, and does not return the endpoint.
 
+## Analysis API
+
+`POST /api/analyze` is the only browser-facing endpoint. It takes
+`{ agreement, conversation }` and returns a validated report or a typed error.
+
+`app/api/analyze/route.ts` is a one-line delegation to `lib/analyze-handler.ts`, which
+holds the logic so it can be tested against a stubbed `fetch` rather than a real model.
+
+```ts
+// 200
+{ "report": ScopeReport, "meta": { "model": "gemma3:4b", "durationMs": 485974 } }
+
+// error
+{ "error": { "code": "unavailable", "message": "...", "retryable": true } }
+```
+
+Both shapes are Zod schemas in `lib/schemas.ts`, and both are checked in **both**
+directions: the handler builds through them, and the browser parses through them before
+rendering. A 200 whose body fails `analyzeResponseSchema` is treated as an invalid
+response rather than partially rendered.
+
+| Situation | Status | `code` |
+| --- | --- | --- |
+| Success | 200 | — |
+| Body is not a JSON object | 400 | `invalid_request` |
+| Body over 512 KiB | 413 | `invalid_request` |
+| Field too short, too long, or missing | 400 | `invalid_input` (with a `path` per field) |
+| `OLLAMA_*` values unusable | 500 | `config_invalid` |
+| Ollama not answering | 503 | `unavailable` |
+| Model tag not installed | 503 | `model_missing` |
+| Model took longer than `OLLAMA_TIMEOUT_MS` | 504 | `timeout` |
+| Ollama rejected the request / failed while generating | 502 | `bad_request` / `server_error` |
+| Output did not match the contract | 502 | `malformed_output` |
+
+Rules the handler holds to:
+
+- **The body is capped before it is parsed.** `analyzeInputSchema` bounds each *field*,
+  which does nothing for a body full of junk keys, so the raw text is measured first.
+- **Nothing user-supplied is echoed.** Error bodies carry a code, a static message, and
+  field paths. Never the agreement, the conversation, a prompt, model output, an
+  `OllamaError.cause`, or a stack trace.
+- **`OLLAMA_BASE_URL` never reaches the browser.** `meta.model` is returned on purpose so
+  you can see which local model ran; the endpoint is not.
+- **Nothing is logged or persisted.** Responses are sent `Cache-Control: no-store` so a
+  report containing client text cannot be retained by a cache.
+
 ## Analysis pipeline
 
 `lib/analysis.ts` turns one agreement and one conversation into a validated `ScopeReport`.
@@ -226,6 +279,14 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 
 - **Context:** default is 4096. Use `options.num_ctx: 8192` for the MVP; large contexts
   slow CPU generation sharply. Input fields are capped at 20,000 characters each.
+- **Timeout:** a full analysis is three sequential calls, so the per-call budget is the
+  whole-run budget in practice. Measured on a CPU-only Windows box, `gemma3:4b` generated
+  at roughly 7 tokens/second and one complete run took about 8 minutes, which does **not**
+  fit the default 120 s. Set `OLLAMA_TIMEOUT_MS=600000` (the maximum) or drop to
+  `gemma3:1b` while iterating.
+- **Scripting the endpoint from Node:** Node's built-in `fetch` has a 300 s default headers
+  timeout, shorter than a slow full run. Browsers do not have that limit, so this only
+  affects scripted calls — use `node:http` for them.
 - **Keep the model warm:** `keep_alive: "10m"` (default is 5m) avoids reloading 3.4 GB on
   every request. `ollama ps` shows what is resident and where.
 - **Stop it when done:** `ollama stop gemma3:4b`.
@@ -250,17 +311,22 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
   Then quit and relaunch Ollama. `ollama ps`/the startup log should confirm it.
 - Model downloads need internet access once. Offline use after that has to be verified by
   actually disconnecting; it has not been tested in this repository yet.
-- Nothing is persisted: no database, no files written with your pasted text.
+- Nothing is persisted: no database, no files written with your pasted text, and nothing
+  written to `localStorage`, `sessionStorage`, or cookies. The report and your pasted text
+  live only in the open tab, which is why a reload clears them.
 - Local processing does not protect against malware, a compromised machine, or a leaked
   `.env`. Do not paste a client's confidential material without their permission.
 
 ## Project layout
 
 ```text
-app/          route shell, layout, global tokens (Tailwind v4 + shadcn)
-components/   ui/ shadcn primitives, scope-form.tsx client form, privacy-indicator.tsx
+app/          route shell, layout, global tokens (Tailwind v4 + shadcn), api/analyze/
+components/   ui/ shadcn primitives, scope-form.tsx client form, analysis-panel.tsx (the four
+              analysis states), scope-report.tsx, finding-card.tsx, privacy-indicator.tsx
 lib/          schemas.ts (Zod contracts), ollama.ts (server-only Ollama client), prompts.ts
-              (all model prompts), analysis.ts (pipeline), evidence.ts (quote verification), samples.ts
+              (all model prompts), analysis.ts (pipeline), evidence.ts (quote verification),
+              analyze-handler.ts (POST /api/analyze), report-display.ts (status labels),
+              samples.ts
 prompts/      one task prompt per implementation step, per AGENTS.md
 tests/        node:test unit tests (no test framework dependency)
 ```

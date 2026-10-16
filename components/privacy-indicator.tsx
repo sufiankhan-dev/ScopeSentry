@@ -20,13 +20,16 @@ export function PrivacyIndicator() {
               id="privacy-heading"
               className="text-sm font-semibold tracking-tight"
             >
-              Analysis is designed to run on your own machine
+              Analysis runs on your own machine
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Right now nothing you paste is stored or sent anywhere &mdash; this page
-              makes no network requests. Once the local engine is connected, the model
-              will run on an Ollama instance on your own machine instead of a
-              third-party AI service. That connection is not wired up yet.
+              When you run an analysis, the text you pasted is sent to this
+              app&rsquo;s own server and from there to the Ollama instance
+              configured for it &mdash; normally{" "}
+              <code className="font-mono text-[0.8em]">127.0.0.1:11434</code> on
+              this computer. That is the only destination it has: there is no
+              cloud AI provider to fall back to. Nothing is stored, so nothing
+              survives the analysis unless you copy it out yourself.
             </p>
           </div>
 
@@ -37,20 +40,28 @@ export function PrivacyIndicator() {
             </li>
             <li className="flex items-start gap-2">
               <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-foreground/40" />
+              <span>
+                Nothing is written to your browser storage either: the report and
+                your pasted text live only in this open tab.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-foreground/40" />
               <span>Initial setup downloads software and models; that needs internet access.</span>
             </li>
             <li className="flex items-start gap-2">
               <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-foreground/40" />
               <span>Findings are advisory review aids, never legal conclusions.</span>
             </li>
-            <li className="flex items-start gap-2">
+            <li className="flex items-start gap-2 sm:col-span-2">
               <TriangleAlert
                 aria-hidden="true"
                 className="mt-0.5 size-4 shrink-0"
               />
               <span>
                 Local processing does not protect against malware, a compromised machine,
-                or a leaked config file.
+                or a leaked config file. It has also not been tested with the network
+                disconnected, so treat offline use as unverified.
               </span>
             </li>
           </ul>
