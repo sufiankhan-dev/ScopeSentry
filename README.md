@@ -14,7 +14,7 @@ and no database.
 | Input workspace (agreement + conversation, validation, sample data, privacy notice) | Working |
 | Report contracts and types (Zod schemas for agreement, conversation, findings, summary) | Working |
 | Ollama / Gemma client (`lib/ollama.ts`: config, timeouts, validated JSON, typed errors) | Working |
-| Analysis pipeline (prompts, extraction, comparison, evidence verification) | Not built yet |
+| Analysis pipeline (prompts, extraction, comparison, evidence verification) | Working (server-side only; no route or UI yet) |
 | Scope report UI, reply drafting, API routes | Not built yet |
 
 The input screen is honest about this: pressing **Analyze scope** says the analysis engine
@@ -168,6 +168,56 @@ can return as-is:
 `getOllamaStatus()` is the cheap precheck a route can use for the "Ollama unavailable or
 model missing" state: it reads `/api/tags`, never throws, and does not return the endpoint.
 
+## Analysis pipeline
+
+`lib/analysis.ts` turns one agreement and one conversation into a validated `ScopeReport`.
+Nothing is wired to the UI yet: this is the server-side pipeline a route will call.
+
+```ts
+import { analyzeScope } from "@/lib/analysis";
+
+const report = await analyzeScope({ agreement, conversation });
+// report satisfies z.infer<typeof scopeReportSchema>
+```
+
+Three calls to the local model, in this order:
+
+1. **Agreement terms** — deliverables, exclusions, revision limits, deadlines, assumptions,
+   ambiguities (`agreementExtractionSchema`).
+2. **Conversation items** — client requests, freelancer commitments, decisions
+   (`conversationExtractionSchema`).
+3. **Comparison** — one finding per request plus the report summary, given the two validated
+   extractions rather than the pasted text so the context stays inside a CPU-sized `num_ctx`.
+
+The three calls run one after another. A local Ollama server generates a single request at a
+time on CPU, so overlapping them only makes the second one queue behind the first and hit the
+per-call timeout.
+
+Every prompt lives in `lib/prompts.ts`. Documents are fenced and labelled as untrusted data, and
+each stage is told to ignore instructions found inside them.
+
+What the application checks after the model answers:
+
+| Check | Result when it fails |
+| --- | --- |
+| Quote found in the pasted text (`lib/evidence.ts`) | `evidenceStatus` becomes `partial` or `unverified`, an issue is recorded, and an `unverified` finding is downgraded to `needs_review` |
+| Price or date that appears in neither document | Finding downgraded to `needs_review` |
+| Every quote verified | Classification is left exactly as the model returned it |
+| Extracted request with no finding | Counted in a report limitation as uncovered |
+| Agreement term whose quote cannot be found | Counted in a report limitation as unverified |
+| Comparison context shortened by the item bounds | Counted in a report limitation |
+| Whole report | Re-validated with `scopeReportSchema`; a failure is `malformed_output` |
+
+Deliberate limits: matching is case-, whitespace-, and punctuation-tolerant, but a matched quote
+is always sliced out of the original text, so the report shows your own bytes; a quote with no
+letters or digits never counts as evidence; an unverifiable quote is kept and labelled rather
+than silently deleted, so you can judge the claim; the pipeline only ever downgrades a
+classification, never upgrades one; and input over 20,000 characters per field is rejected
+instead of truncated.
+
+Failures are typed: `AnalyzeInputError` for input that is too short, too long, or missing (it
+never contains your text), and `OllamaError` for everything model-side.
+
 ## Tuning for a CPU-only laptop
 
 Ollama only uses CUDA (NVIDIA) or ROCm/Vulkan (AMD) on Windows. On Intel integrated
@@ -181,8 +231,9 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 - Server-level equivalents (user environment variables, then restart Ollama):
   `OLLAMA_CONTEXT_LENGTH`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_NUM_PARALLEL=1`,
   `OLLAMA_MAX_LOADED_MODELS=1`.
-- Expect tens of seconds per analysis call on CPU. Budget for that in the UI's loading
-  state rather than pretending it is instant.
+- Expect tens of seconds per model call on CPU, and roughly two to four minutes for a full
+  three-stage analysis. Budget for that in the UI's loading state rather than pretending it is
+  instant.
 
 ## Privacy
 
@@ -207,7 +258,8 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 ```text
 app/          route shell, layout, global tokens (Tailwind v4 + shadcn)
 components/   ui/ shadcn primitives, scope-form.tsx client form, privacy-indicator.tsx
-lib/          schemas.ts (Zod contracts), ollama.ts (server-only Ollama client), samples.ts
+lib/          schemas.ts (Zod contracts), ollama.ts (server-only Ollama client), prompts.ts
+              (all model prompts), analysis.ts (pipeline), evidence.ts (quote verification), samples.ts
 prompts/      one task prompt per implementation step, per AGENTS.md
 tests/        node:test unit tests (no test framework dependency)
 ```
@@ -220,7 +272,7 @@ npm run build   # production build
 npm run start   # serve the production build
 npm run lint    # eslint
 npm run typecheck # tsc --noEmit
-npm test        # node:test (schema contracts + Ollama client)
+npm test        # node:test (schema contracts, Ollama client, evidence verification, pipeline)
 ```
 
 ## Troubleshooting
