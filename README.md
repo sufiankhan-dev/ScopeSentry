@@ -204,16 +204,17 @@ What the application checks after the model answers:
 | Price or date that appears in neither document | Finding downgraded to `needs_review` |
 | Every quote verified | Classification is left exactly as the model returned it |
 | Extracted request with no finding | Counted in a report limitation as uncovered |
-| Agreement term whose quote cannot be found | Counted in a report limitation as unverified |
+| Agreement term whose quote cannot be found in the document it names | Counted in a report limitation as unverified |
 | Comparison context shortened by the item bounds | Counted in a report limitation |
 | Whole report | Re-validated with `scopeReportSchema`; a failure is `malformed_output` |
 
-Deliberate limits: matching is case-, whitespace-, and punctuation-tolerant, but a matched quote
-is always sliced out of the original text, so the report shows your own bytes; a quote with no
-letters or digits never counts as evidence; an unverifiable quote is kept and labelled rather
-than silently deleted, so you can judge the claim; the pipeline only ever downgrades a
-classification, never upgrades one; and input over 20,000 characters per field is rejected
-instead of truncated.
+Deliberate limits: every quote is checked only against the source it declares, and matching is
+case-, whitespace-, and punctuation-tolerant, but a matched quote is always sliced out of the
+original text, so the report shows your own bytes; a quote with no letters or digits never counts
+as evidence; an unverifiable quote is kept and labelled rather than silently deleted, so you can
+judge the claim, and is never swapped for a similar sentence from your document; the pipeline only
+ever downgrades a classification, never upgrades one; and input over 20,000 characters per field is
+rejected instead of truncated.
 
 Failures are typed: `AnalyzeInputError` for input that is too short, too long, or missing (it
 never contains your text), and `OllamaError` for everything model-side.

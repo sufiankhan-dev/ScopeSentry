@@ -76,7 +76,9 @@ export type NormalizedSource = {
  *
  * Three differences are tolerated, because they are the ones models introduce when they copy a
  * quote and are meaningless as evidence of anything: letter case, typographic punctuation
- * (`“ ” ’ — …`), and whitespace runs. Trailing whitespace is dropped from the folded view.
+ * (`“ ” ’ — …`), and whitespace runs. Trailing whitespace is dropped from the folded view;
+ * `findExactQuote` also trims the quote itself, because leading whitespace has no counterpart in
+ * the source text and would otherwise fail a match for a quote that is really there.
  */
 export const normalizeForMatching = (source: string): NormalizedSource => {
   let text = "";
@@ -130,9 +132,13 @@ const HAS_MEANINGFUL_CHARACTER = /[\p{L}\p{N}]/u;
  * Returns `found: false` for anything that is not a real occurrence: a blank quote, a quote with
  * no letters or digits in it (an ellipsis or a dash is not evidence), or text that simply is not
  * in the source.
+ *
+ * Surrounding whitespace on the quote is trimmed before matching, because a quote copied out of
+ * a rendered document often arrives padded. Everything else has to be a genuine substring: no
+ * fuzzy matching, no word-level fallback, no near-sentence substitution.
  */
 export const findExactQuote = (source: string, quote: string): QuoteMatch => {
-  const needle = normalizeForMatching(quote);
+  const needle = normalizeForMatching(quote.trim());
   if (!HAS_MEANINGFUL_CHARACTER.test(needle.text)) {
     return { found: false, matchedText: null };
   }
@@ -248,10 +254,14 @@ const collectUnsupportedTerms = (
  * Verifies a model finding against the pasted sources.
  *
  * Downgrade-only, and deliberately so:
- * - no quote matches â†’ `needs_review`, because the finding has no support at all;
- * - a price or date the documents never contained â†’ `needs_review`, even if every quote
+ * - no quote matches means `needs_review`, because the finding has no support at all;
+ * - a price or date the documents never contained means `needs_review`, even if every quote
  *   verified, because the model asserted something unsourced;
  * - `unclear` and `needs_review` are never rewritten to a more confident classification.
+ *
+ * A quote that fails verification is kept exactly as the model wrote it. It is never swapped for
+ * a similar sentence from the source: the user has to see the claim that was made, clearly
+ * marked as unverifiable, so they can judge it against their own document.
  *
  * What survives is only ever made *less* assertive here, so a pipeline change can never make a
  * report look stronger than the evidence allows.
@@ -305,14 +315,18 @@ const weakerStatus = (left: EvidenceStatus, right: EvidenceStatus): EvidenceStat
 /**
  * Verifies the evidence attached to extracted agreement or conversation items.
  *
+ * Each quote is checked against the source it declares, exactly as `verifyFinding` does for
+ * findings. A conversation quote that turns up inside an agreement-extraction item is therefore
+ * verified against the conversation it names, so a genuinely sourced quote is never reported as
+ * missing from the agreement.
+ *
  * The extraction schemas have no verification status field, so this returns the count of items
  * whose quotes could not be found. `lib/analysis.ts` turns that into a report limitation instead
  * of hiding it.
  */
 export const countUnverifiedExtractionEvidence = (
   extraction: AgreementExtraction | ConversationExtraction,
-  source: Evidence["source"],
-  document: string,
+  sources: EvidenceSources,
 ): { items: number; quotes: number } => {
   const groups = Object.values(extraction) as Array<Array<{ evidence?: Evidence[] }>>;
   let items = 0;
@@ -323,7 +337,7 @@ export const countUnverifiedExtractionEvidence = (
       const evidence = item.evidence ?? [];
       if (evidence.length === 0) continue;
       const failed = evidence.filter(
-        (entry) => !findExactQuote(document, entry.quote).found,
+        (entry) => !findExactQuote(sources[entry.source], entry.quote).found,
       );
       if (failed.length > 0) {
         items += 1;

@@ -11,6 +11,7 @@ import {
 } from "../lib/evidence.ts";
 import type { FindingClaim } from "../lib/evidence.ts";
 import type { AgreementExtraction, Evidence } from "../lib/schemas.ts";
+import { modelFindingSchema } from "../lib/schemas.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures use the committed Riverside sample wording or invented strings.
@@ -118,6 +119,28 @@ test("a hyphenated quote of an em dash sentence returns the user's own punctuati
   assert.equal(match.matchedText, "design — refinement\nand palette…");
 });
 
+test("whitespace around a quote is ignored, so a padded quote still verifies", () => {
+  const padded = findExactQuote(AGREEMENT, "  Two (2) rounds of revisions per page template. \n ");
+
+  assert.equal(padded.found, true);
+  assert.equal(padded.matchedText, "Two (2) rounds of revisions per page template.");
+});
+
+test("a quote padded with whitespace verifies at the very start of a document", () => {
+  const source = "Ordering means payments and a CMS connection, which is not included.";
+  const match = findExactQuote(source, "\t  Ordering means payments and a CMS connection  ");
+
+  assert.equal(match.found, true);
+  assert.equal(match.matchedText, "Ordering means payments and a CMS connection");
+});
+
+test("a quote spanning a line break still verifies and keeps the source's own spacing", () => {
+  const match = findExactQuote(AGREEMENT, "Website design: wireframe\nand high-fidelity design");
+
+  assert.equal(match.found, true);
+  assert.equal(match.matchedText, "Website design: wireframe and high-fidelity design");
+});
+
 test("a smart quote in the source is returned smart in the verified quote", () => {
   const source = `The client said “we need an ordering page”.`;
   const match = findExactQuote(source, `"we need an ordering page"`);
@@ -143,6 +166,47 @@ test("blank or meaningless quotes are never found", () => {
       findExactQuote(AGREEMENT, quote),
       { found: false, matchedText: null },
       `expected ${JSON.stringify(quote)} to fail verification`,
+    );
+  }
+});
+
+// --- Altered quotes ---------------------------------------------------------
+
+test("a quote altered from the real wording is not found", () => {
+  const altered: Array<[string, string]> = [
+    // The agreed number changed.
+    ["Two (3) rounds of revisions per page template.", AGREEMENT],
+    // The list separator changed.
+    ["Copywriting and translation, or menu data entry.", AGREEMENT],
+    // A clause dropped from the middle of the exclusion.
+    ["Copywriting, translation, menu data entry.", AGREEMENT],
+    // A word respelled.
+    ["Front-end development, CMS configuration, or hosting set-up.", AGREEMENT],
+    // The clause order reversed.
+    ["CMS configuration, or front-end development, or hosting setup.", AGREEMENT],
+    // The punctuation between two real sentences changed.
+    ["We need an online ordering page on the site, can you build that?", CONVERSATION],
+  ];
+
+  for (const [quote, source] of altered) {
+    assert.deepEqual(
+      findExactQuote(source, quote),
+      { found: false, matchedText: null },
+      `expected the altered quote ${JSON.stringify(quote)} to fail verification`,
+    );
+  }
+});
+
+test("a paraphrase presented as a quote is not found", () => {
+  for (const quote of [
+    "The agreement allows two rounds of revisions.",
+    "Frontend development is not part of this agreement.",
+    "The client asked about payments.",
+  ]) {
+    assert.equal(
+      findExactQuote(AGREEMENT, quote).found || findExactQuote(CONVERSATION, quote).found,
+      false,
+      `expected the paraphrase ${JSON.stringify(quote)} to fail verification`,
     );
   }
 });
@@ -210,6 +274,109 @@ test("a quote found in the wrong document is treated as unverified", () => {
 
   assert.equal(mislabelled.evidenceStatus, "unverified");
   assert.equal(mislabelled.classification, "needs_review");
+  assert.match(mislabelled.evidenceIssues[0], /conversation text/);
+});
+
+test("an altered quote makes the finding unverified and is never swapped for the real sentence", () => {
+  const alteredQuote = "We need an online ordering page on the site, can you build that?";
+  const altered = verifyFinding(
+    finding({ conversationEvidence: [evidence(alteredQuote, "conversation")] }),
+    sources,
+  );
+
+  assert.equal(altered.evidenceStatus, "unverified");
+  assert.equal(altered.classification, "needs_review");
+  assert.equal(altered.evidenceIssues.length, 1);
+  assert.match(altered.evidenceIssues[0], /conversation text/);
+
+  // The model's wording is preserved verbatim, and the nearby real sentence is not substituted
+  // for it: the user must see the claim that failed, not a tidied-up version of it.
+  assert.deepEqual(altered.conversationEvidence, [
+    { quote: alteredQuote, source: "conversation" },
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(altered),
+    /We need an online ordering page on the site\./,
+    "a failed quote must not be replaced by the similar sentence in the source",
+  );
+});
+
+test("an altered agreement quote degrades the finding even when the conversation quote is real", () => {
+  const altered = verifyFinding(
+    finding({
+      agreementEvidence: [
+        evidence("Front-end development, CMS configuration, or hosting set-up.", "agreement"),
+      ],
+    }),
+    sources,
+  );
+
+  // The conversation quote verifies, but the finding's claim about the agreement rests on a quote
+  // that does not exist, so the whole finding is unverified and needs review.
+  assert.equal(altered.evidenceStatus, "unverified");
+  assert.equal(altered.classification, "needs_review");
+  assert.equal(altered.evidenceIssues.length, 1);
+  assert.match(altered.evidenceIssues[0], /agreement text/);
+  assert.equal(
+    altered.conversationEvidence[0].quote,
+    "We need an online ordering page on the site.",
+  );
+});
+
+// --- Missing evidence --------------------------------------------------------
+
+test("a finding without any conversation quote never reaches the verifier", () => {
+  const parsed = modelFindingSchema.safeParse({
+    id: "f1",
+    title: "Online ordering page",
+    classification: "potentially_out_of_scope",
+    explanation: "The request asks for an ordering page.",
+    conversationEvidence: [],
+    agreementEvidence: [],
+    nextStep: "Quote the ordering page as separate work.",
+  });
+
+  assert.equal(parsed.success, false, "an empty conversation quote list is not a valid finding");
+});
+
+test("a finding with no agreement evidence is still verified on its conversation quote", () => {
+  const verified = verifyFinding(finding({ agreementEvidence: [] }), sources);
+
+  assert.equal(verified.evidenceStatus, "verified");
+  assert.deepEqual(verified.evidenceIssues, []);
+  assert.deepEqual(verified.agreementEvidence, []);
+  assert.equal(verified.classification, "potentially_out_of_scope");
+});
+
+test("a finding whose only quotes are missing is unverified with one issue per failed quote", () => {
+  const missing = verifyFinding(
+    finding({
+      conversationEvidence: [evidence("The client signed off on the extra work.", "conversation")],
+      agreementEvidence: [evidence("Additional rounds are billable at the hourly rate.", "agreement")],
+    }),
+    sources,
+  );
+
+  assert.equal(missing.evidenceStatus, "unverified");
+  assert.equal(missing.classification, "needs_review");
+  assert.equal(missing.evidenceIssues.length, 2);
+  assert.match(missing.evidenceIssues[0], /conversation text/);
+  assert.match(missing.evidenceIssues[1], /agreement text/);
+});
+
+test("a missing conversation quote degrades the finding even when its agreement quote is real", () => {
+  const missing = verifyFinding(
+    finding({
+      conversationEvidence: [evidence("Ordering means payments and a CMS connection.", "conversation")],
+    }),
+    sources,
+  );
+
+  // The agreement quote matches, but the finding's required conversation evidence does not exist
+  // in the conversation, so it cannot stand on its own.
+  assert.equal(missing.evidenceStatus, "unverified");
+  assert.equal(missing.classification, "needs_review");
+  assert.equal(missing.agreementEvidence.length, 1);
 });
 
 test("one good quote and one bad quote give partial status and keep the classification", () => {
@@ -327,9 +494,9 @@ test("the concrete-term patterns stay narrow", () => {
 
 // --- Extraction evidence ----------------------------------------------------
 
-const extraction = (quotes: string[]): AgreementExtraction => ({
+const extraction = (quotes: string[], source: Evidence["source"] = "agreement"): AgreementExtraction => ({
   deliverables: [
-    { id: "d1", description: "Six page templates", evidence: quotes.map((quote) => evidence(quote, "agreement")) },
+    { id: "d1", description: "Six page templates", evidence: quotes.map((quote) => evidence(quote, source)) },
   ],
   exclusions: [{ id: "e1", description: "Copywriting", evidence: [] }],
   revisionLimits: [],
@@ -340,25 +507,42 @@ const extraction = (quotes: string[]): AgreementExtraction => ({
 
 test("extraction evidence is counted only when a quote is missing from the source", () => {
   assert.deepEqual(
-    countUnverifiedExtractionEvidence(extraction(["six (6) page templates"]), "agreement", AGREEMENT),
+    countUnverifiedExtractionEvidence(extraction(["six (6) page templates"]), sources),
     { items: 0, quotes: 0 },
   );
 
   assert.deepEqual(
     countUnverifiedExtractionEvidence(
       extraction(["six (6) page templates", "a clause that was never written"]),
-      "agreement",
-      AGREEMENT,
+      sources,
     ),
     { items: 1, quotes: 1 },
   );
 });
 
 test("extraction items without evidence are not counted as unverified", () => {
-  assert.deepEqual(countUnverifiedExtractionEvidence(extraction([]), "agreement", AGREEMENT), {
+  assert.deepEqual(countUnverifiedExtractionEvidence(extraction([]), sources), {
     items: 0,
     quotes: 0,
   });
+});
+
+test("an extraction quote is verified against the source it declares, not the stage document", () => {
+  // A conversation quote carried inside an agreement-extraction item is still real evidence when
+  // it genuinely appears in the pasted conversation. Checking it against the agreement instead
+  // would raise a false "could not be found" for a correctly sourced quote.
+  const withConversationQuote = countUnverifiedExtractionEvidence(
+    extraction(["We need an online ordering page on the site."], "conversation"),
+    sources,
+  );
+  assert.deepEqual(withConversationQuote, { items: 0, quotes: 0 });
+
+  // A quote that names a source it is not in is still unverified.
+  const misattributed = countUnverifiedExtractionEvidence(
+    extraction(["Front-end development, CMS configuration, or hosting setup."], "conversation"),
+    sources,
+  );
+  assert.deepEqual(misattributed, { items: 1, quotes: 1 });
 });
 
 // --- Source-level tripwire --------------------------------------------------

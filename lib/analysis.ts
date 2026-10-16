@@ -157,13 +157,12 @@ const buildApplicationLimitations = (
 
   const { items: unverifiedTerms } = countUnverifiedExtractionEvidence(
     agreementExtraction,
-    "agreement",
-    sources.agreement,
+    sources,
   );
 
   if (unverifiedTerms > 0) {
     notes.push(
-      `${unverifiedTerms} extracted agreement term(s) carried a quote that could not be found in the pasted agreement. Treat those descriptions as unverified.`,
+      `${unverifiedTerms} extracted agreement term(s) carried a quote that could not be found in the document it was attributed to. Treat those descriptions as unverified.`,
     );
   }
 
