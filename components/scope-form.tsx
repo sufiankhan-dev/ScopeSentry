@@ -26,7 +26,11 @@ import {
   analyzeResponseSchema,
   conversationTextSchema,
 } from "@/lib/schemas";
-import type { AnalysisState, AnalyzeFailure, AnalyzeResponse } from "@/lib/schemas";
+import type {
+  AnalysisState,
+  AnalyzeFailure,
+  AnalyzeResponse,
+} from "@/lib/schemas";
 import { useState } from "react";
 
 const LIMIT = MAX_TEXT_LENGTH.toLocaleString("en-US");
@@ -78,7 +82,9 @@ function invalidResponse(): AnalyzeOutcome {
  * partially rendered, because a report is only trustworthy once it has been
  * through the same schema the server used.
  */
-async function readAnalyzeResponse(response: Response): Promise<AnalyzeOutcome> {
+async function readAnalyzeResponse(
+  response: Response,
+): Promise<AnalyzeOutcome> {
   let body: unknown;
   try {
     body = await response.json();
@@ -178,7 +184,11 @@ export function ScopeForm() {
       const outcome = await readAnalyzeResponse(response);
       setAnalysis(
         outcome.ok
-          ? { status: "succeeded", report: outcome.response.report, meta: outcome.response.meta }
+          ? {
+              status: "succeeded",
+              report: outcome.response.report,
+              meta: outcome.response.meta,
+            }
           : { status: "failed", error: outcome.failure },
       );
     } catch {
@@ -209,10 +219,16 @@ export function ScopeForm() {
               01
             </span>
             <span aria-hidden="true" className="h-px flex-1 bg-border" />
-            <FileText aria-hidden="true" className="size-4 text-muted-foreground" />
+            <FileText
+              aria-hidden="true"
+              className="size-4 text-muted-foreground"
+            />
           </div>
 
-          <FieldLabel htmlFor="agreement" className="text-lg font-semibold tracking-tight">
+          <FieldLabel
+            htmlFor="agreement"
+            className="text-lg font-semibold tracking-tight"
+          >
             Original agreement
           </FieldLabel>
 
@@ -223,7 +239,9 @@ export function ScopeForm() {
             onChange={(event) => setAgreement(event.target.value)}
             onBlur={() => markTouched("agreement")}
             aria-invalid={agreementError ? true : undefined}
-            aria-describedby={agreementError ? "agreement-error" : "agreement-hint"}
+            aria-describedby={
+              agreementError ? "agreement-error" : "agreement-hint"
+            }
             placeholder={PLACEHOLDER_AGREEMENT}
             className="field-sizing-fixed mt-4 min-h-64 resize-y whitespace-pre-line text-sm leading-relaxed placeholder:whitespace-pre-line placeholder:text-muted-foreground/70"
           />
@@ -233,9 +251,9 @@ export function ScopeForm() {
               {agreementError}
             </FieldError>
           ) : (
-            <FieldDescription id="agreement-hint" className="mt-2.5">
-              The proposal, brief, or signed agreement. Deliverables, revision limits,
-              exclusions, deadlines, and anything it leaves ambiguous.
+            <FieldDescription id="agreement-hint" className="pt-4">
+              The proposal, brief, or signed agreement. Deliverables, revision
+              limits, exclusions, deadlines, and anything it leaves ambiguous.
             </FieldDescription>
           )}
 
@@ -274,7 +292,10 @@ export function ScopeForm() {
             />
           </div>
 
-          <FieldLabel htmlFor="conversation" className="text-lg font-semibold tracking-tight">
+          <FieldLabel
+            htmlFor="conversation"
+            className="text-lg font-semibold tracking-tight"
+          >
             Client conversation
           </FieldLabel>
 
@@ -297,9 +318,9 @@ export function ScopeForm() {
               {conversationError}
             </FieldError>
           ) : (
-            <FieldDescription id="conversation-hint" className="mt-2.5">
-              The email thread or chat where the requests are made. Keep speaker names and
-              message order exactly as written.
+            <FieldDescription id="conversation-hint" className="pt-4">
+              The email thread or chat where the requests are made. Keep speaker
+              names and message order exactly as written.
             </FieldDescription>
           )}
 
