@@ -17,12 +17,16 @@ and no database.
 | Analysis pipeline (prompts, extraction, comparison, evidence verification) | Working |
 | Analysis API (`POST /api/analyze`, validated request/response, redacted errors) | Working |
 | Scope report UI (summary, per-request findings, status labels, evidence, reasoning, next steps) | Working |
-| Reply drafting (`/api/reply`, editable client message) | Not built yet |
+| Reply drafting (`POST /api/reply`, editable client message, unsupported claims discarded) | Working |
 
 Pressing **Analyze scope** runs a real analysis against your local Ollama server and
 renders the report. Every finding shows the classification, the source quotes behind
 it, the reasoning, and a next step. Findings are advisory review aids, never legal
 conclusions.
+
+Every finding also offers an optional **Draft a reply**: the local model writes one
+short message from that finding's verified quotes, you edit it, and you send it. The
+app never sends anything.
 
 Expect a slow first run: `gemma3:4b` on a CPU-only machine takes roughly eight minutes
 end to end, because the pipeline makes three sequential model calls. See
@@ -221,6 +225,97 @@ Rules the handler holds to:
 - **Nothing is logged or persisted.** Responses are sent `Cache-Control: no-store` so a
   report containing client text cannot be retained by a cache.
 
+## Client reply drafting
+
+`POST /api/reply` drafts one short message for one finding. The browser sends the
+finding's whole context back to the server:
+
+```jsonc
+// request
+{ "agreement": "...", "conversation": "...", "report": { /* ScopeReport */ }, "findingId": "f1" }
+
+// 200
+{ "findingId": "f1",
+  "draft": { "intent": "discuss_additional_work", "body": "Hi Priya, ..." },
+  "meta": { "model": "gemma3:4b", "durationMs": 41_200 },
+  "groundedQuotes": ["Front-end development, CMS configuration, or hosting setup."],
+  "droppedQuotes": 0,
+  "trimmed": false }
+```
+
+The two pasted documents travel with the report on purpose. `evidenceStatus` is a flag
+the browser sent, and a flag is not evidence: the route re-checks every quote the
+finding cites with the same `findExactQuote` used by the report, and hands the model only
+the quotes that matched. A doctored report, or a finding with nothing checkable left,
+gets `422 missing_context` **before any model call**.
+
+`draft.intent` is one of `clarify_scope`, `ask_question`, `discuss_additional_work`, so the
+UI can say what the message is for instead of printing a contract value.
+
+| Situation | Status | `code` |
+| --- | --- | --- |
+| Success | 200 | — |
+| Body is not a JSON object | 400 | `invalid_request` |
+| Body over 1 MiB | 413 | `invalid_request` |
+| Input fails the reply contract | 400 | `invalid_input` |
+| Nothing in the finding could be verified | 422 | `missing_context` |
+| Draft asserted something unsupported | 502 | `draft_rejected` |
+| `OLLAMA_*` unusable / Ollama not answering / model missing | 500 / 503 / 503 | `config_invalid` / `unavailable` / `model_missing` |
+| Timeout, Ollama failure, output not matching the contract | 504 / 502 / 502 | `timeout` / `server_error` / `malformed_output` |
+
+### The draft is discarded, not flagged
+
+The model is asked not to invent a fee, a deadline, a clause, or a promise. Four
+deterministic checks in `lib/reply.ts` then hold it to that, and **any failure throws the
+whole draft away** — a warning attached to a draft is the thing most likely to be skimmed
+past on the way to the outbox:
+
+| Check | Rejects |
+| --- | --- |
+| `findUnsupportedFigures` | A price or date that is not in the two documents (the same patterns that downgrade a finding) |
+| `findUnsupportedQuotations` | Any `"…"` span that is not in the two documents — the anti-fabricated-clause rule |
+| `findForbiddenPhrasing` | Accusations and legal language, promises in the freelancer's own voice ("I will deliver…"), and `[Name]` / `{{…}}` placeholders |
+
+The response then carries one static message and no part of the draft. The phrasing
+lexicon is a heuristic, not a judgement — it catches the constructions that matter and
+will miss a deliberate rephrasing, which is why the composer keeps saying to read the
+draft before sending it.
+
+One repair is deliberately *not* a discard: `trimDegenerateTail` cuts off whatever the model
+spilled after the message and the response says `trimmed: true`. A reply is the only output in
+this app that is long free prose, and `gemma3:4b` on llama.cpp reliably runs past the end of
+it — once closing the JSON inside the body and then reciting the drafting rules back, once
+emitting a word count and looping on it. Both shapes still validate, because the spill stays
+inside the body string, so without the repair the tail reaches the user's textarea. Trimming
+can only remove text, so it cannot introduce a claim the documents do not support, and the
+guards run on the trimmed body.
+
+Two consequences are documented in `lib/reply.ts` because they are not obvious:
+
+- `REPLY_OPTIONS.num_predict` is **900**, not a tight budget. The failure mode was the
+  opposite of running out of room: the model needed one more token to close the JSON object
+  and did not get it, so the draft came back `malformed_output`.
+- `repeat_penalty` is **not** raised. At 1.15 the drafts came back clean, but Ollama's own
+  sampler then aborted most later runs with `prediction aborted, token repeat limit reached`,
+  which reaches the user as `server_error`. A tail we can trim beats a hard failure.
+
+### Nothing is ever sent
+
+There is no `mailto:`, no SMTP, no outbound request other than `POST /api/reply`, and no
+integration of any kind. The draft lands in an editable `<textarea>` with a copy button,
+labelled "Draft — not sent", next to the verified quotes it was written from. Editing
+your own wording does not disable regenerate, but the button relabels itself so a
+regeneration cannot silently overwrite it.
+
+### Known limitation on a CPU-only machine
+
+Measured on this box with `gemma3:4b`: six live drafts, five came back clean in 11–25 s, and
+one returned `malformed_output` and then succeeded on the second press. When the model runs
+past the end of the message it can spend the whole token budget and never close the JSON,
+which arrives as "the local model returned output ScopeSentry could not validate" next to a
+**Try again** button. A larger model or a GPU is the real fix; a different `num_predict` is
+not — see `REPLY_OPTIONS` for what was tried and what was measured.
+
 ## Analysis pipeline
 
 `lib/analysis.ts` turns one agreement and one conversation into a validated `ScopeReport`.
@@ -279,6 +374,10 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 
 - **Context:** default is 4096. Use `options.num_ctx: 8192` for the MVP; large contexts
   slow CPU generation sharply. Input fields are capped at 20,000 characters each.
+- **Repetition:** long free-text generations can run past the end of the answer on llama.cpp.
+  The reply stage handles that with a 900-token budget plus `trimDegenerateTail`, and does
+  *not* raise `repeat_penalty` — at 1.15 Ollama's own sampler aborted most later runs with
+  `token repeat limit reached`. The analysis stages never run long enough to need either.
 - **Timeout:** a full analysis is three sequential calls, so the per-call budget is the
   whole-run budget in practice. Measured on a CPU-only Windows box, `gemma3:4b` generated
   at roughly 7 tokens/second and one complete run took about 8 minutes, which does **not**
@@ -314,18 +413,24 @@ graphics it falls back to CPU inference, which is fine but slow and RAM-bound.
 - Nothing is persisted: no database, no files written with your pasted text, and nothing
   written to `localStorage`, `sessionStorage`, or cookies. The report and your pasted text
   live only in the open tab, which is why a reload clears them.
+- Drafting a reply re-sends the two documents to the same local endpoint for verification,
+  so a report you are still looking at cannot be used to draft from invented evidence.
+- ScopeSentry has no outbound path of any kind: it cannot email, message, or otherwise
+  contact anyone, and no draft is sent anywhere.
 - Local processing does not protect against malware, a compromised machine, or a leaked
   `.env`. Do not paste a client's confidential material without their permission.
 
 ## Project layout
 
 ```text
-app/          route shell, layout, global tokens (Tailwind v4 + shadcn), api/analyze/
+app/          route shell, layout, global tokens (Tailwind v4 + shadcn), api/analyze/, api/reply/
 components/   ui/ shadcn primitives, scope-form.tsx client form, analysis-panel.tsx (the four
-              analysis states), scope-report.tsx, finding-card.tsx, privacy-indicator.tsx
+              analysis states), scope-report.tsx, finding-card.tsx, reply-composer.tsx,
+              privacy-indicator.tsx
 lib/          schemas.ts (Zod contracts), ollama.ts (server-only Ollama client), prompts.ts
               (all model prompts), analysis.ts (pipeline), evidence.ts (quote verification),
               analyze-handler.ts (POST /api/analyze), report-display.ts (status labels),
+              reply.ts (reply drafting + draft guards), reply-handler.ts (POST /api/reply),
               samples.ts
 prompts/      one task prompt per implementation step, per AGENTS.md
 tests/        node:test unit tests (no test framework dependency)
@@ -339,7 +444,7 @@ npm run build   # production build
 npm run start   # serve the production build
 npm run lint    # eslint
 npm run typecheck # tsc --noEmit
-npm test        # node:test (schema contracts, Ollama client, evidence verification, pipeline)
+npm test        # node:test (schema contracts, Ollama client, evidence verification, pipeline, reply drafting)
 ```
 
 ## Troubleshooting

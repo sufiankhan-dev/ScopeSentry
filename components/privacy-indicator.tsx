@@ -23,8 +23,8 @@ export function PrivacyIndicator() {
               Analysis runs on your own machine
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              When you run an analysis, the text you pasted is sent to this
-              app&rsquo;s own server and from there to the Ollama instance
+              When you run an analysis or draft a reply, the text you pasted is sent
+              to this app&rsquo;s own server and from there to the Ollama instance
               configured for it &mdash; normally{" "}
               <code className="font-mono text-[0.8em]">127.0.0.1:11434</code> on
               this computer. That is the only destination it has: there is no
@@ -48,6 +48,13 @@ export function PrivacyIndicator() {
             <li className="flex items-start gap-2">
               <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-foreground/40" />
               <span>Initial setup downloads software and models; that needs internet access.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-foreground/40" />
+              <span>
+                Drafted replies are text for you to edit and send yourself.
+                ScopeSentry has no way to send a message to anyone.
+              </span>
             </li>
             <li className="flex items-start gap-2">
               <span aria-hidden="true" className="mt-2 size-1 shrink-0 rounded-full bg-foreground/40" />

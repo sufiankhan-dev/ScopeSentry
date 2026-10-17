@@ -340,7 +340,7 @@ export function ScopeForm() {
         ) : null}
       </div>
 
-      <AnalysisPanel state={analysis} />
+      <AnalysisPanel state={analysis} documents={{ agreement, conversation }} />
     </form>
   );
 }

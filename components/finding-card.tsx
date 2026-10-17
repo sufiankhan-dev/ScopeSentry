@@ -4,8 +4,11 @@ import {
   evidenceStatusDisplay,
 } from "@/lib/report-display";
 import type { ReportTone } from "@/lib/report-display";
-import type { Evidence, Finding } from "@/lib/schemas";
-import { TriangleAlert } from "lucide-react";
+import type { Evidence, Finding, ScopeReport } from "@/lib/schemas";
+import { MessageSquareQuote, TriangleAlert } from "lucide-react";
+
+import { ReplyComposer } from "@/components/reply-composer";
+import type { ReplyDocuments } from "@/components/reply-composer";
 
 /**
  * One client request, reported against the agreement.
@@ -22,6 +25,11 @@ import { TriangleAlert } from "lucide-react";
  *
  * Nothing here decides whether a finding is *true*. It shows what the documents
  * say and what the model concluded, and marks the difference.
+ *
+ * The reply composer at the foot of the card follows the same split: the draft is
+ * clearly labelled as the model's text, the verified quotes it was written from are
+ * one disclosure away, and the text itself is editable rather than presented as a
+ * finished message.
  */
 
 const TONE_CLASSES: Record<ReportTone, string> = {
@@ -105,7 +113,16 @@ function EvidenceGroup({
   );
 }
 
-export function FindingCard({ finding }: { finding: Finding }) {
+export function FindingCard({
+  finding,
+  report,
+  documents,
+}: {
+  finding: Finding;
+  /** Omitted when a card is rendered outside the full report; the composer needs it to re-verify quotes. */
+  report?: ScopeReport;
+  documents?: ReplyDocuments;
+}) {
   const classification = classificationDisplay(finding.classification);
   const evidence = evidenceStatusDisplay(finding.evidenceStatus);
   const evidenceIsClean = finding.evidenceStatus === "verified";
@@ -195,6 +212,15 @@ export function FindingCard({ finding }: { finding: Finding }) {
           </h4>
           <p className="text-sm leading-relaxed text-pretty">{finding.nextStep}</p>
         </div>
+
+        {report && documents ? (
+          <ReplyComposer finding={finding} report={report} documents={documents} />
+        ) : (
+          <div className="flex items-center gap-2 border-t border-border pt-4 text-sm text-muted-foreground">
+            <MessageSquareQuote aria-hidden="true" className="size-4 shrink-0" />
+            Reply drafting is available on a finding inside a full report.
+          </div>
+        )}
       </div>
     </li>
   );

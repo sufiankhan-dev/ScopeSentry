@@ -292,15 +292,25 @@ export const analyzeInputIssueSchema = z.strictObject({
 
 export type AnalyzeInputIssue = z.infer<typeof analyzeInputIssueSchema>;
 
-export const analyzeErrorSchema = z.strictObject({
-  error: z.strictObject({
-    code: z.enum(ANALYZE_ERROR_CODES),
-    /** Already user-safe and static: it never contains pasted text, a prompt, or an endpoint. */
-    message: z.string().trim().min(1).max(1_000),
-    retryable: z.boolean(),
-    issues: z.array(analyzeInputIssueSchema).max(20).optional(),
-  }),
-});
+/**
+ * Builds the one error envelope both browser-facing routes use.
+ *
+ * Factored so the shape — including the guarantee that a `message` is a static, user-safe string
+ * and that `issues` carries a path and a message but never a field's value — is declared once
+ * and cannot drift between `/api/analyze` and `/api/reply`.
+ */
+const buildErrorEnvelope = <const TCodes extends readonly string[]>(codes: TCodes) =>
+  z.strictObject({
+    error: z.strictObject({
+      code: z.enum(codes),
+      /** Already user-safe and static: it never contains pasted text, a prompt, or an endpoint. */
+      message: z.string().trim().min(1).max(1_000),
+      retryable: z.boolean(),
+      issues: z.array(analyzeInputIssueSchema).max(20).optional(),
+    }),
+  });
+
+export const analyzeErrorSchema = buildErrorEnvelope(ANALYZE_ERROR_CODES);
 
 export type AnalyzeError = z.infer<typeof analyzeErrorSchema>;
 
@@ -327,15 +337,20 @@ export const analyzeResponseSchema = z.strictObject({
 export type AnalyzeResponse = z.infer<typeof analyzeResponseSchema>;
 
 /**
- * A failure the browser can render, either parsed from `analyzeErrorSchema` or
+ * A failure the browser can render, either parsed from an error envelope or
  * produced locally when the request never produced a usable response.
+ *
+ * Generic over the error-code union so `/api/analyze` and `/api/reply` share one
+ * shape while keeping their own closed code sets.
  */
-export type AnalyzeFailure = {
-  code: AnalyzeErrorCode | "network_error" | "invalid_response";
+export type ApiFailure<TCode extends string = AnalyzeErrorCode> = {
+  code: TCode | "network_error" | "invalid_response";
   message: string;
   retryable: boolean;
   issues: AnalyzeInputIssue[];
 };
+
+export type AnalyzeFailure = ApiFailure<AnalyzeErrorCode>;
 
 /**
  * The client's request state as one closed union, so "loading" and "has a
@@ -347,3 +362,134 @@ export type AnalysisState =
   | { status: "running" }
   | { status: "succeeded"; report: ScopeReport; meta: AnalyzeMeta }
   | { status: "failed"; error: AnalyzeFailure };
+
+// ---------------------------------------------------------------------------
+// Reply drafting
+//
+// The reply is derived from one finding in an already-validated report, but the
+// route does not trust that report: it re-checks every quote against the pasted
+// documents itself (see `lib/reply.ts`) and drops any draft that asserts a price,
+// date, quotation, commitment, or accusation the documents do not support.
+// ---------------------------------------------------------------------------
+
+/**
+ * What a drafted message is for. A label the UI shows, not a claim about scope:
+ * the classification that matters is the finding's, and it is already on the card.
+ */
+export const REPLY_INTENTS = [
+  "clarify_scope",
+  "ask_question",
+  "discuss_additional_work",
+] as const;
+
+export type ReplyIntent = (typeof REPLY_INTENTS)[number];
+
+/**
+ * A short client message is the whole product here, so the cap is generous but
+ * not unbounded: anything longer is a letter, not a reply to one finding.
+ */
+export const MAX_REPLY_LENGTH = 1_500;
+export const MAX_FINDING_ID_LENGTH = 100;
+
+export const replyDraftSchema = z.strictObject({
+  intent: z.enum(REPLY_INTENTS),
+  body: trimmedText("The draft message", MAX_REPLY_LENGTH),
+});
+
+export type ReplyDraft = z.infer<typeof replyDraftSchema>;
+
+const findingIdSchema = z
+  .string()
+  .trim()
+  .min(1, "Choose a finding to draft a reply for.")
+  .max(MAX_FINDING_ID_LENGTH, `Keep the finding id under ${MAX_FINDING_ID_LENGTH} characters.`);
+
+/**
+ * Everything the route needs to ground a draft.
+ *
+ * The two pasted documents travel with the report on purpose: `evidenceStatus`
+ * is a flag the browser sent, and a flag is not evidence. Re-sending the source
+ * text is what lets the route re-verify the finding's quotes with
+ * `findExactQuote` instead of believing it. Both documents are already held in
+ * `ScopeForm` state, so this costs the user nothing and adds no storage.
+ */
+export const replyInputSchema = z.strictObject({
+  agreement: agreementTextSchema,
+  conversation: conversationTextSchema,
+  report: scopeReportSchema,
+  findingId: findingIdSchema,
+});
+
+export type ReplyInput = z.infer<typeof replyInputSchema>;
+
+/**
+ * `ANALYZE_ERROR_CODES` plus `missing_context` (a finding with nothing verified to
+ * base a draft on) and `draft_rejected` (the model asserted something the
+ * documents do not support, so the draft was discarded). The Ollama codes are
+ * written out rather than spread for the reason given above, and
+ * `tests/reply-handler.test.ts` asserts the two lists stay in step.
+ */
+export const REPLY_ERROR_CODES = [
+  "invalid_request",
+  "invalid_input",
+  "missing_context",
+  "config_invalid",
+  "unavailable",
+  "model_missing",
+  "timeout",
+  "bad_request",
+  "server_error",
+  "malformed_output",
+  "draft_rejected",
+] as const;
+
+export type ReplyErrorCode = (typeof REPLY_ERROR_CODES)[number];
+
+export const replyErrorSchema = buildErrorEnvelope(REPLY_ERROR_CODES);
+
+export type ReplyError = z.infer<typeof replyErrorSchema>;
+
+/**
+ * The draft, which finding it belongs to, and which local model wrote it.
+ *
+ * `groundedQuotes` is the evidence the route re-verified and the model was shown, so
+ * the browser can display it and the user can see the draft's basis — and, when
+ * `droppedQuotes` is above zero, that some of the finding's quotes were left out.
+ */
+export const replyResponseSchema = z.strictObject({
+  findingId: findingIdSchema,
+  draft: replyDraftSchema,
+  /** Same two fields as an analysis: the model tag, and how long the server waited. */
+  meta: analyzeMetaSchema,
+  groundedQuotes: z
+    .array(trimmedText("A grounded quote", MAX_QUOTE_LENGTH))
+    .max(MAX_EVIDENCE_PER_FINDING * 2),
+  droppedQuotes: z.number().int().nonnegative().max(100),
+  /** True when a repeated tail was cut off the draft before it was shown. */
+  trimmed: z.boolean(),
+});
+
+export type ReplyResponse = z.infer<typeof replyResponseSchema>;
+
+export type ReplyFailure = ApiFailure<ReplyErrorCode>;
+
+/**
+ * The composer's state as one closed union, mirroring `AnalysisState`.
+ *
+ * The success branch carries the whole validated response rather than a field or two
+ * of it, so what the UI renders is exactly what `replyResponseSchema` accepted —
+ * including the verified quotes the draft was grounded in.
+ */
+export type ReplyState =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "succeeded"; response: ReplyResponse }
+  | { status: "failed"; error: ReplyFailure };
+
+/**
+ * Rendered with every draft. It states what the text is, that it came from the
+ * local model, that the user owns it before it leaves their outbox, and that
+ * ScopeSentry has no way to send it.
+ */
+export const DRAFT_NOTICE =
+  "Draft only. The local model wrote this from the evidence shown above, and it is advisory text, not legal advice. Read it, change anything you disagree with, and send it yourself — ScopeSentry cannot send messages for you.";

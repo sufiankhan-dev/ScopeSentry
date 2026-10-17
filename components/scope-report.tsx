@@ -1,4 +1,5 @@
 import { FindingCard } from "@/components/finding-card";
+import type { ReplyDocuments } from "@/components/reply-composer";
 import {
   CLASSIFICATION_ORDER,
   classificationDisplay,
@@ -25,9 +26,12 @@ import { ShieldCheck } from "lucide-react";
 export function ScopeReportView({
   report,
   meta,
+  documents,
 }: {
   report: ScopeReport;
   meta: AnalyzeMeta;
+  /** The pasted documents, so each finding's reply composer can re-send them for verification. */
+  documents: ReplyDocuments;
 }) {
   const counts = countByClassification(report.findings);
   const unverified = countUnverified(report.findings);
@@ -103,7 +107,7 @@ export function ScopeReportView({
           <h3 className="text-sm font-semibold tracking-tight">Findings</h3>
           <ol className="flex flex-col gap-4">
             {report.findings.map((finding) => (
-              <FindingCard key={finding.id} finding={finding} />
+              <FindingCard key={finding.id} finding={finding} report={report} documents={documents} />
             ))}
           </ol>
         </div>

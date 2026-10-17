@@ -1,6 +1,7 @@
 "use client";
 
 import { ScopeReportView } from "@/components/scope-report";
+import type { ReplyDocuments } from "@/components/reply-composer";
 import { formatElapsed } from "@/lib/report-display";
 import type { AnalysisState } from "@/lib/schemas";
 import { Loader, TriangleAlert, Unplug } from "lucide-react";
@@ -172,7 +173,14 @@ function ErrorPanel({ state }: { state: Extract<AnalysisState, { status: "failed
  * report can never appear unless a real request returned a body that passed
  * `analyzeResponseSchema`.
  */
-export function AnalysisPanel({ state }: { state: AnalysisState }) {
+export function AnalysisPanel({
+  state,
+  documents,
+}: {
+  state: AnalysisState;
+  /** The two pasted documents, threaded to the report so a reply can be verified against them. */
+  documents: ReplyDocuments;
+}) {
   switch (state.status) {
     case "idle":
       return <IdlePanel />;
@@ -181,6 +189,6 @@ export function AnalysisPanel({ state }: { state: AnalysisState }) {
     case "failed":
       return <ErrorPanel state={state} />;
     case "succeeded":
-      return <ScopeReportView report={state.report} meta={state.meta} />;
+      return <ScopeReportView report={state.report} meta={state.meta} documents={documents} />;
   }
 }

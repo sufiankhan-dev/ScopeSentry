@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import type { OllamaChatMessage } from "./ollama.ts";
-import type { AgreementExtraction, ConversationExtraction } from "./schemas.ts";
+import type {
+  AgreementExtraction,
+  ConversationExtraction,
+  ScopeClassification,
+} from "./schemas.ts";
 import {
   MAX_FINDINGS,
   modelFindingSchema,
@@ -299,3 +303,87 @@ ${context}`,
     dropped,
   };
 };
+
+// --- Stage 4: client reply draft -------------------------------------------
+
+/**
+ * The one finding a draft is written from, with the quotes the application itself
+ * re-verified against the pasted documents.
+ *
+ * `lib/reply.ts` builds this and does the verifying, so this module stays a pure
+ * message builder. A quote the user cannot produce cannot get here, which is what
+ * makes the "only from the evidence" instruction in `REPLY_SYSTEM` enforceable
+ * rather than aspirational.
+ */
+export type ReplyContext = {
+  title: string;
+  classification: ScopeClassification;
+  explanation: string;
+  nextStep: string;
+  conversationQuotes: string[];
+  agreementQuotes: string[];
+};
+
+/**
+ * Drafting rules for the message.
+ *
+ * The constraints are stated as absolutes because the point of the feature is a
+ * message a freelancer can send without rewriting it into something they did not
+ * agree to. Four of them are also checked deterministically in `lib/reply.ts`
+ * (figures, quotations, phrasing, placeholders) and the draft is discarded if one
+ * of those fires, so this prompt is the first line of defence and the guards are
+ * the second.
+ */
+export const REPLY_SYSTEM = `You draft one short, polite, professional message that a freelancer can send to their client about one request.
+
+Pick the purpose that fits the evidence and return it as intent:
+- clarify_scope: state plainly what the agreed work covers, so the client knows where the request sits.
+- ask_question: ask the client something genuine that the evidence leaves open.
+- discuss_additional_work: note that this looks like work beyond the agreement and suggest discussing it separately.
+
+Rules:
+- Write only from the evidence below. Add nothing the evidence does not support.
+- Never state a fee, price, rate, discount, deposit, deadline, or delivery date. If the evidence contains one, you may repeat it word for word; you may never produce one yourself, and you may never estimate or suggest a figure.
+- Never invent, quote, or imply a clause, and never refer to a term or obligation that is not in the evidence.
+- Never commit the freelancer to anything. Do not write "I will", "I'll deliver", "I can include", "we promise", "guarantee", or any promise of work, dates, or outcomes. Ask, suggest, or propose a conversation instead. Do not say that you can or will do the extra work either: ask whether they want it scoped separately.
+- Never accuse the client of anything and never use contract or legal language. No blame, no "you failed to", "you did not deliver", "you owe", "this breaches", "you are in breach", "liable", "legal action".
+- Stay calm and collaborative. Treat this as a normal conversation about work, never as a dispute.
+- Three to five sentences, first person, addressed to the client. Plain text only: no subject line, no markdown, no bullet points, no signature block.
+- Never use placeholder text such as [Name], [date], [insert price], or {{anything}}.
+- Do not quote the conversation or the agreement back, do not offer a second version or an alternative, and do not add a list.
+- End the body at your last sentence, close the JSON object, and stop. Never append a word count, a postscript, a summary, a repeated phrase, or anything after the message.
+- The text is a draft the freelancer will edit and send themselves. Never write it as if it has been sent, and never promise that anyone will act on it.`;
+
+const quoteList = (label: string, quotes: readonly string[]) =>
+  quotes.length > 0
+    ? `${label}\n${quotes.map((quote) => `- ${quote}`).join("\n")}`
+    : `${label}\n(none available)`;
+
+/**
+ * System message + fenced evidence for stage 4.
+ *
+ * Only the re-verified quotes of the selected finding travel with the request, so
+ * the context stays small enough for a CPU-sized `num_ctx` and the model has no
+ * room to draw on text the application has not checked.
+ */
+export const buildReplyMessages = (context: ReplyContext): OllamaChatMessage[] => [
+  { role: "system", content: REPLY_SYSTEM },
+  {
+    role: "user",
+    content: `${DOCUMENT_NOTICE}
+
+Draft one message to the client about the finding below. Use only the quoted evidence; do not add terms, figures, or commitments that are not in it.
+
+Finding
+title: ${context.title}
+classification: ${context.classification}
+the analysis's reading: ${context.explanation}
+suggested next step: ${context.nextStep}
+
+${quoteList("Verified quotes from the conversation:", context.conversationQuotes)}
+
+${quoteList("Verified quotes from the agreement:", context.agreementQuotes)}
+
+Return the intent and the message body, and nothing else. End your output as soon as the body is finished.`,
+  },
+];
