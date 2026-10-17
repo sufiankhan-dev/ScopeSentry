@@ -188,13 +188,13 @@ export function ReplyComposer({
   }
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border pt-4">
+    <div className="flex flex-col gap-4 border-t border-border pt-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h4 className="font-mono text-[0.7rem] tracking-widest text-muted-foreground uppercase">
+        <h4 className="font-mono text-[0.7rem] tracking-widest text-glow uppercase">
           Client reply
         </h4>
         {state.status === "idle" || state.status === "failed" ? (
-          <Button type="button" variant="outline" size="sm" onClick={generate}>
+          <Button type="button" variant="outline" pill size="sm" onClick={generate}>
             <MessageSquareQuote aria-hidden="true" />
             {state.status === "failed" ? "Try again" : "Draft a reply"}
           </Button>
@@ -205,12 +205,12 @@ export function ReplyComposer({
         <div
           role="status"
           aria-live="polite"
-          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/50 px-4 py-3.5"
+          className="flex flex-col gap-2 rounded-xl border border-glow/30 bg-background/50 px-5 py-4"
         >
           <p className="flex items-center gap-2.5 text-sm font-medium">
             <Loader
               aria-hidden="true"
-              className="size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
+              className="size-4 shrink-0 animate-spin text-glow motion-reduce:animate-none"
             />
             Drafting on your local model
           </p>
@@ -228,7 +228,7 @@ export function ReplyComposer({
       {state.status === "failed" ? (
         <div
           role="alert"
-          className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3.5"
+          className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-background/50 px-5 py-4"
         >
           <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
           <div className="flex flex-col gap-1.5">
@@ -297,9 +297,9 @@ function DraftEditor({
   onRegenerate,
 }: DraftEditorProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 px-4 py-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background/50 px-5 py-5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center rounded-full border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-800 dark:border-amber-400/40 dark:text-amber-200">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-muted/50 px-3 py-1 text-xs font-medium text-amber-300">
           Draft — not sent
         </span>
         <span className="text-xs text-muted-foreground">{INTENT_LABELS[state.draft.intent]}</span>
@@ -326,13 +326,14 @@ function DraftEditor({
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" size="sm" onClick={onCopy}>
+        <Button type="button" pill size="sm" onClick={onCopy}>
           <Copy aria-hidden="true" />
           Copy draft
         </Button>
         <Button
           type="button"
           variant="outline"
+          pill
           size="sm"
           onClick={onRegenerate}
           title={dirty ? "Replaces the text you have edited" : "Write a different version"}

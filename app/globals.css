@@ -2,6 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * ScopeSentry has a single, deliberate theme: a deep navy surface with one
+ * luminous blue accent, borrowed from the visual language of the Gemma pages.
+ *
+ * There is deliberately no `prefers-color-scheme` palette split. Two palettes is
+ * what made the previous version read as a generic template, and a tool this
+ * focused is better with one opinionated surface. The `dark` variant itself is
+ * still *declared*, because the imported `shadcn/tailwind.css` preset declares
+ * `@variant dark` inside its own utilities and fails to compile without it; no
+ * component in this app uses a `dark:` utility any more.
+ */
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
 @theme inline {
@@ -39,6 +50,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /*
+   * Two tokens that exist for the hero motif only: the blue used for the
+   * starlight dots and the halo behind them. Naming them here means the JSX
+   * never writes a raw colour, so the motif can be re-tuned in one place.
+   */
+  --color-glow: var(--glow);
+  --color-dot: var(--dot);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,84 +67,168 @@
 }
 
 :root {
-  --background: oklch(0.985 0.002 90);
-  --foreground: oklch(0.21 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0 0);
-  --primary: oklch(0.48 0.19 264);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0.003 90);
-  --secondary-foreground: oklch(0.21 0 0);
-  --muted: oklch(0.96 0.003 90);
-  --muted-foreground: oklch(0.52 0.012 264);
-  --accent: oklch(0.96 0.003 90);
-  --accent-foreground: oklch(0.21 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0.004 90);
-  --input: oklch(0.88 0.005 90);
-  --ring: oklch(0.48 0.19 264);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  /* Surfaces: navy-black page, one step up for cards, one more for wells. */
+  --background: oklch(0.15 0.022 265);
+  --foreground: oklch(0.97 0.005 265);
+  --card: oklch(0.2 0.026 265);
+  --card-foreground: oklch(0.97 0.005 265);
+  --popover: oklch(0.2 0.026 265);
+  --popover-foreground: oklch(0.97 0.005 265);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.16 0 0);
-    --foreground: oklch(0.97 0 0);
-    --card: oklch(0.21 0 0);
-    --card-foreground: oklch(0.97 0 0);
-    --popover: oklch(0.21 0 0);
-    --popover-foreground: oklch(0.97 0 0);
-    --primary: oklch(0.75 0.14 264);
-    --primary-foreground: oklch(0.16 0 0);
-    --secondary: oklch(0.26 0 0);
-    --secondary-foreground: oklch(0.97 0 0);
-    --muted: oklch(0.26 0 0);
-    --muted-foreground: oklch(0.72 0.012 264);
-    --accent: oklch(0.26 0 0);
-    --accent-foreground: oklch(0.97 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 12%);
-    --input: oklch(1 0 0 / 16%);
-    --ring: oklch(0.72 0.15 264);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.21 0 0);
-    --sidebar-foreground: oklch(0.97 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 12%);
-    --sidebar-ring: oklch(0.556 0 0);
-  }
+  /* One accent. Everything that says "this is the product's own colour" uses it. */
+  --primary: oklch(0.79 0.11 256);
+  --primary-foreground: oklch(0.17 0.03 265);
+  --secondary: oklch(0.24 0.026 265);
+  --secondary-foreground: oklch(0.97 0.005 265);
+  --muted: oklch(0.24 0.026 265);
+  --muted-foreground: oklch(0.74 0.022 265);
+  --accent: oklch(0.26 0.03 265);
+  --accent-foreground: oklch(0.97 0.005 265);
+
+  /*
+   * Red stays red and the out-of-scope caution stays amber. Neither borrows the
+   * blue, so "the brand colour" and "this finding is a problem" never look alike.
+   *
+   * Both are pitched light enough to read as 14px text on a dark surface. A
+   * darker, more saturated red looks better as a shape but drops under 4.5:1 the
+   * moment it sits on a card, which is where every message in this app lives.
+   */
+  --destructive: oklch(0.83 0.15 25);
+
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.79 0.11 256);
+
+  --glow: oklch(0.79 0.11 256);
+  --dot: oklch(0.79 0.11 256 / 0.42);
+
+  --chart-1: oklch(0.79 0.11 256);
+  --chart-2: oklch(0.8 0.13 85);
+  --chart-3: oklch(0.7 0.19 24);
+  --chart-4: oklch(0.74 0.02 265);
+  --chart-5: oklch(0.6 0.09 256);
+
+  --radius: 0.75rem;
+
+  --sidebar: oklch(0.2 0.026 265);
+  --sidebar-foreground: oklch(0.97 0.005 265);
+  --sidebar-primary: oklch(0.79 0.11 256);
+  --sidebar-primary-foreground: oklch(0.17 0.03 265);
+  --sidebar-accent: oklch(0.26 0.03 265);
+  --sidebar-accent-foreground: oklch(0.97 0.005 265);
+  --sidebar-border: oklch(1 0 0 / 11%);
+  --sidebar-ring: oklch(0.79 0.11 256);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+    /* Anchored sections must clear the sticky nav. */
+    scroll-padding-top: 5.5rem;
+  }
   body {
     @apply bg-background text-foreground;
   }
-  html {
-    @apply font-sans;
+  /*
+   * One orchestrated moment, and it is the only motion on the page: the hero's
+   * scan line brightening, with the three matched connectors lighting up in
+   * sequence on the same 4.5s clock. That is the product's own idea of a
+   * comparison running, drawn in the place where it belongs. Both animations
+   * are decorative, slow enough never to pull the eye off the form, and they
+   * are switched off outright under reduced-motion.
+   */
+  @keyframes ss-scan-pulse {
+    0%,
+    100% {
+      opacity: 0.45;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes ss-match-draw {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .ss-scan {
+    animation: ss-scan-pulse 4.5s ease-in-out infinite;
+  }
+
+  .ss-match {
+    animation: ss-match-draw 4.5s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    .ss-scan,
+    .ss-match {
+      animation: none;
+      opacity: 0.85;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * The hero field: a 1px lattice of blue dots with one soft halo behind it.
+   * Applied to the hero section only. It is a background image, so it costs no
+   * markup, no layout, and nothing for a screen reader to skip.
+   */
+  .ss-hero-field {
+    background-image:
+      radial-gradient(circle at center, oklch(0.79 0.11 256 / 0.2) 1.5px, transparent 1.5px),
+      radial-gradient(
+        ellipse 60% 55% at 72% 28%,
+        oklch(0.79 0.11 256 / 0.16),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 50% 45% at 12% 78%,
+        oklch(0.79 0.11 256 / 0.09),
+        transparent 72%
+      );
+    background-size:
+      26px 26px,
+      100% 100%,
+      100% 100%;
+    background-position:
+      center,
+      center,
+      center;
+    mask-image: linear-gradient(to bottom, black 0%, black 62%, transparent 100%);
+  }
+
+  /*
+   * A hairline that fades out at both ends. Used between sections instead of a
+   * row of stacked cards, so the page keeps its own rhythm rather than becoming
+   * a grid of identical boxes.
+   */
+  .ss-rule {
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      oklch(1 0 0 / 14%) 18%,
+      oklch(1 0 0 / 14%) 82%,
+      transparent
+    );
+  }
+
+  /* The pill. Buttons and badges only; cards and inputs keep `--radius`. */
+  .ss-pill {
+    border-radius: 9999px;
   }
 }

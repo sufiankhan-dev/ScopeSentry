@@ -199,12 +199,12 @@ export function ScopeForm() {
       <FieldGroup className="lg:grid lg:grid-cols-2 lg:gap-6">
         <Field
           data-invalid={agreementError ? true : undefined}
-          className="gap-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+          className="gap-0 rounded-2xl border border-border bg-card/60 p-5 sm:p-6"
         >
           <div className="mb-4 flex items-center gap-3">
             <span
               aria-hidden="true"
-              className="font-mono text-xs tracking-widest text-muted-foreground"
+              className="font-mono text-xs tracking-widest text-glow"
             >
               01
             </span>
@@ -212,7 +212,7 @@ export function ScopeForm() {
             <FileText aria-hidden="true" className="size-4 text-muted-foreground" />
           </div>
 
-          <FieldLabel htmlFor="agreement" className="text-base font-semibold">
+          <FieldLabel htmlFor="agreement" className="text-lg font-semibold tracking-tight">
             Original agreement
           </FieldLabel>
 
@@ -225,27 +225,28 @@ export function ScopeForm() {
             aria-invalid={agreementError ? true : undefined}
             aria-describedby={agreementError ? "agreement-error" : "agreement-hint"}
             placeholder={PLACEHOLDER_AGREEMENT}
-            className="field-sizing-fixed mt-3 min-h-64 resize-y whitespace-pre-line text-sm leading-relaxed placeholder:whitespace-pre-line placeholder:text-muted-foreground/70"
+            className="field-sizing-fixed mt-4 min-h-64 resize-y whitespace-pre-line text-sm leading-relaxed placeholder:whitespace-pre-line placeholder:text-muted-foreground/70"
           />
 
           {agreementError ? (
-            <FieldError id="agreement-error" className="mt-2">
+            <FieldError id="agreement-error" className="mt-2.5">
               {agreementError}
             </FieldError>
           ) : (
-            <FieldDescription id="agreement-hint" className="mt-2">
+            <FieldDescription id="agreement-hint" className="mt-2.5">
               The proposal, brief, or signed agreement. Deliverables, revision limits,
               exclusions, deadlines, and anything it leaves ambiguous.
             </FieldDescription>
           )}
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <p className="font-mono text-xs text-muted-foreground">
               {count(agreement)} / {LIMIT}
             </p>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
+              pill
               size="sm"
               title={`Fill this field with ${SAMPLE_LABEL.toLowerCase()}`}
               onClick={() => loadSample("agreement")}
@@ -257,12 +258,12 @@ export function ScopeForm() {
 
         <Field
           data-invalid={conversationError ? true : undefined}
-          className="gap-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+          className="gap-0 rounded-2xl border border-border bg-card/60 p-5 sm:p-6"
         >
           <div className="mb-4 flex items-center gap-3">
             <span
               aria-hidden="true"
-              className="font-mono text-xs tracking-widest text-muted-foreground"
+              className="font-mono text-xs tracking-widest text-glow"
             >
               02
             </span>
@@ -273,7 +274,7 @@ export function ScopeForm() {
             />
           </div>
 
-          <FieldLabel htmlFor="conversation" className="text-base font-semibold">
+          <FieldLabel htmlFor="conversation" className="text-lg font-semibold tracking-tight">
             Client conversation
           </FieldLabel>
 
@@ -288,27 +289,28 @@ export function ScopeForm() {
               conversationError ? "conversation-error" : "conversation-hint"
             }
             placeholder={PLACEHOLDER_CONVERSATION}
-            className="field-sizing-fixed mt-3 min-h-64 resize-y whitespace-pre-line text-sm leading-relaxed placeholder:whitespace-pre-line placeholder:text-muted-foreground/70"
+            className="field-sizing-fixed mt-4 min-h-64 resize-y whitespace-pre-line text-sm leading-relaxed placeholder:whitespace-pre-line placeholder:text-muted-foreground/70"
           />
 
           {conversationError ? (
-            <FieldError id="conversation-error" className="mt-2">
+            <FieldError id="conversation-error" className="mt-2.5">
               {conversationError}
             </FieldError>
           ) : (
-            <FieldDescription id="conversation-hint" className="mt-2">
+            <FieldDescription id="conversation-hint" className="mt-2.5">
               The email thread or chat where the requests are made. Keep speaker names and
               message order exactly as written.
             </FieldDescription>
           )}
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <p className="font-mono text-xs text-muted-foreground">
               {count(conversation)} / {LIMIT}
             </p>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
+              pill
               size="sm"
               title={`Fill this field with ${SAMPLE_LABEL.toLowerCase()}`}
               onClick={() => loadSample("conversation")}
@@ -321,12 +323,19 @@ export function ScopeForm() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" size="lg" disabled={!isValid || analysis.status === "running"}>
+          <Button
+            type="submit"
+            pill
+            size="lg"
+            disabled={!isValid || analysis.status === "running"}
+            className="px-6 text-[0.95rem]"
+          >
             {analysis.status === "running" ? "Analyzing…" : "Analyze scope"}
           </Button>
           <Button
             type="button"
             variant="outline"
+            pill
             title={`Fill both fields with ${SAMPLE_LABEL.toLowerCase()}`}
             onClick={loadSampleBoth}
           >

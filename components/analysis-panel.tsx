@@ -50,18 +50,18 @@ function IdlePanel() {
   return (
     <section
       aria-labelledby="report-pending-heading"
-      className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 px-5 py-5 sm:px-6"
+      className="flex flex-col gap-3 rounded-2xl border border-dashed border-border bg-card/30 px-6 py-8 sm:px-8"
     >
-      <h2 id="report-pending-heading" className="text-sm font-semibold tracking-tight">
+      <h2 id="report-pending-heading" className="text-lg font-semibold tracking-tight">
         No report yet
       </h2>
-      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         Paste both documents above and run the analysis. The report will list every
         client request separately, mark each one as in scope, possibly out of scope,
         unclear, or needing review, and show the exact text behind each judgment so
         you can check it yourself.
       </p>
-      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         This needs Ollama running on your own machine with the configured model
         already pulled. If it is not running, the analysis will say so instead of
         failing quietly.
@@ -78,29 +78,29 @@ function LoadingPanel() {
       role="status"
       aria-live="polite"
       aria-labelledby="report-running-heading"
-      className="flex flex-col gap-3 rounded-xl border border-border bg-muted/60 px-5 py-5 sm:px-6"
+      className="flex flex-col gap-4 rounded-2xl border border-glow/30 bg-card/50 px-6 py-8 sm:px-8"
     >
       <div className="flex items-center gap-3">
         <Loader
           aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
+          className="size-4 shrink-0 animate-spin text-glow motion-reduce:animate-none"
         />
-        <h2 id="report-running-heading" className="text-sm font-semibold tracking-tight">
+        <h2 id="report-running-heading" className="text-lg font-semibold tracking-tight">
           Running the analysis on your local model
         </h2>
       </div>
 
-      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         Three steps run in order: reading the agreement, reading the conversation,
         then comparing them. On a CPU-only machine this commonly takes two to four
         minutes, and it is longer the first time because the model has to load.
       </p>
 
-      <p className="font-mono text-sm tabular-nums text-muted-foreground">
+      <p className="font-mono text-sm tabular-nums text-glow">
         {formatElapsed(elapsedMs)} elapsed
       </p>
 
-      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         Your text is going to the Ollama server on this machine that ScopeSentry is
         configured to use, and nowhere else. Leaving this page will not cancel the
         run.
@@ -129,7 +129,7 @@ function ErrorPanel({ state }: { state: Extract<AnalysisState, { status: "failed
     <section
       role="alert"
       aria-labelledby="report-error-heading"
-      className="flex flex-col gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-5 py-5 sm:px-6"
+      className="flex flex-col gap-4 rounded-2xl border border-destructive/45 bg-card/50 px-6 py-8 sm:px-8"
     >
       <div className="flex items-center gap-3">
         {isConnection ? (
@@ -137,12 +137,12 @@ function ErrorPanel({ state }: { state: Extract<AnalysisState, { status: "failed
         ) : (
           <TriangleAlert aria-hidden="true" className="size-4 shrink-0 text-destructive" />
         )}
-        <h2 id="report-error-heading" className="text-sm font-semibold tracking-tight">
+        <h2 id="report-error-heading" className="text-lg font-semibold tracking-tight">
           {isConnection ? "Could not reach the local model" : "The analysis could not be completed"}
         </h2>
       </div>
 
-      <p className="max-w-2xl text-sm leading-relaxed">{error.message}</p>
+      <p className="max-w-[68ch] text-sm leading-relaxed">{error.message}</p>
 
       {error.issues.length > 0 ? (
         <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm leading-relaxed text-muted-foreground">
@@ -158,7 +158,7 @@ function ErrorPanel({ state }: { state: Extract<AnalysisState, { status: "failed
         </ul>
       ) : null}
 
-      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         Your agreement and conversation are still in the fields above. Correct
         anything that needs changing and run the analysis again.
       </p>

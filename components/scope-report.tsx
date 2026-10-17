@@ -39,13 +39,16 @@ export function ScopeReportView({
   return (
     <section
       aria-labelledby="report-heading"
-      className="flex flex-col gap-6 border-t border-border pt-8"
+      className="flex flex-col gap-8 border-t border-border pt-10"
     >
-      <div className="flex flex-col gap-2">
-        <p className="font-mono text-xs tracking-widest text-muted-foreground uppercase">
+      <div className="flex flex-col gap-3">
+        <p className="font-mono text-xs tracking-widest text-glow uppercase">
           Scope report
         </p>
-        <h2 id="report-heading" className="text-2xl font-semibold tracking-tight text-balance">
+        <h2
+          id="report-heading"
+          className="text-3xl font-semibold tracking-[-0.02em] text-balance sm:text-4xl"
+        >
           {report.findings.length === 0
             ? "The comparison produced no findings"
             : `${report.findings.length} request${report.findings.length === 1 ? "" : "s"} reviewed against your agreement`}
@@ -55,21 +58,21 @@ export function ScopeReportView({
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-muted/50 px-5 py-5 sm:px-6">
-        <h3 className="font-mono text-[0.7rem] tracking-widest text-muted-foreground uppercase">
+      <div className="rounded-2xl border border-glow/30 bg-card/50 px-6 py-6 sm:px-7">
+        <h3 className="font-mono text-[0.7rem] tracking-widest text-glow uppercase">
           Summary
         </h3>
-        <p className="mt-2 text-sm leading-relaxed text-pretty sm:text-base">
+        <p className="mt-3 max-w-[72ch] text-base leading-relaxed text-pretty">
           {report.summary.overview}
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-4 max-w-[72ch] text-sm leading-relaxed text-muted-foreground">
           The paragraph above is the local model&rsquo;s reading of the two
           documents. The quotes further down are the parts that were checked
           against the text you pasted.
         </p>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {CLASSIFICATION_ORDER.map((classification) => {
           const display = classificationDisplay(classification);
           const count = counts[classification];
@@ -77,12 +80,12 @@ export function ScopeReportView({
           return (
             <div
               key={classification}
-              className="flex flex-col gap-1 rounded-lg border border-border bg-card px-3.5 py-3"
+              className="flex flex-col gap-1.5 rounded-xl border border-border bg-card/60 px-4 py-4"
             >
               <dt className="text-xs leading-snug text-muted-foreground">
                 {display.label}
               </dt>
-              <dd className="font-mono text-xl font-semibold tabular-nums">
+              <dd className="font-mono text-2xl font-semibold tabular-nums">
                 {count}
               </dd>
             </div>
@@ -91,7 +94,7 @@ export function ScopeReportView({
       </dl>
 
       {unverified > 0 ? (
-        <p className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm leading-relaxed">
+        <p className="flex items-start gap-2.5 rounded-xl border border-destructive/45 bg-card/50 px-4 py-3.5 text-sm leading-relaxed">
           <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-destructive" />
           <span>
             {unverified} of {report.findings.length} finding
@@ -103,16 +106,16 @@ export function ScopeReportView({
       ) : null}
 
       {report.findings.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          <h3 className="text-sm font-semibold tracking-tight">Findings</h3>
-          <ol className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
+          <h3 className="text-base font-semibold tracking-tight">Findings</h3>
+          <ol className="flex flex-col gap-5">
             {report.findings.map((finding) => (
               <FindingCard key={finding.id} finding={finding} report={report} documents={documents} />
             ))}
           </ol>
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-card px-5 py-5 text-sm leading-relaxed text-muted-foreground sm:px-6">
+        <div className="rounded-2xl border border-dashed border-border bg-card/30 px-6 py-6 text-sm leading-relaxed text-muted-foreground sm:px-7">
           <p>
             The model returned no findings for this conversation. The limitations
             below explain why that can happen — most often because no client
@@ -126,7 +129,7 @@ export function ScopeReportView({
         </div>
       )}
 
-      <div className="flex flex-col gap-2.5 border-t border-border pt-6">
+      <div className="flex flex-col gap-3 border-t border-border pt-8">
         <h3 className="font-mono text-[0.7rem] tracking-widest text-muted-foreground uppercase">
           What this analysis could not settle
         </h3>
@@ -137,7 +140,7 @@ export function ScopeReportView({
         </ul>
       </div>
 
-      <p className="rounded-lg border border-border bg-muted/40 px-4 py-3.5 text-sm leading-relaxed text-muted-foreground">
+      <p className="rounded-xl border border-border bg-card/40 px-5 py-4 text-sm leading-relaxed text-muted-foreground">
         {ADVISORY_NOTICE}
       </p>
     </section>
